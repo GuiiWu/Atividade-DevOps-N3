@@ -1,0 +1,9 @@
+{
+  "spec": {
+    "behavior": {
+      "scaleDown": {
+        "stabilizationWindowSeconds": 60
+      }
+    }
+  }
+}

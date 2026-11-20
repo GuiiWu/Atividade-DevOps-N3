@@ -1,0 +1,29 @@
+# BÔNUS - Ingress.
+# Justificativa: o NodePort expõe uma porta "estranha" (30080) em cada nó e
+# exige um Service exposto por aplicação. O Ingress centraliza a entrada HTTP
+# na porta 80, roteando por nome de host/caminho para Services ClusterIP —
+# é como se faz em produção (com TLS/HTTPS no mesmo lugar).
+#
+# Requer o controlador ingress-nginx instalado (ver comandos.md):
+#   kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
+# Teste: curl.exe -H "Host: loja.localhost" http://localhost/
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: loja-api
+  namespace: n3-guilherme
+  labels:
+    app: loja-api
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: loja.localhost
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: loja-api
+                port:
+                  number: 80
