@@ -1,3 +1,4 @@
+[2026-11-20 10:32:53] PS> kubectl get hpa loja-api -n n3-guilherme -w
 NAME       REFERENCE             TARGETS              MINPODS   MAXPODS   REPLICAS   AGE
 loja-api   Deployment/loja-api   cpu: <unknown>/50%   2         6         0          0s
 loja-api   Deployment/loja-api   cpu: 1%/50%          2         6         2          39s

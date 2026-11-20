@@ -56,10 +56,11 @@ kubectl get pods -n n3-guilherme -l app=loja-api
 curl.exe -s http://localhost:30080/
 ```
 
-Durante o rollout, deixei um laço em paralelo chamando `/health` a cada 200 ms por 45 s:
+Durante o rollout, deixei um laço em paralelo chamando `/health` a cada 200 ms por 45 s. Ele foi disparado em segundo plano (`Start-Job`) 2 s antes do `set image`:
 
 ```powershell
-$res=@(); $fim=(Get-Date).AddSeconds(45); while ((Get-Date) -lt $fim) { try { $res += (Invoke-RestMethod http://localhost:30080/health -TimeoutSec 3).versao } catch { $res += 'ERRO' }; Start-Sleep -Milliseconds 200 }; $res | Group-Object | Select Name,Count
+$job = Start-Job { $res=@(); $fim=(Get-Date).AddSeconds(45); while ((Get-Date) -lt $fim) { try { $res += (Invoke-RestMethod http://localhost:30080/health -TimeoutSec 3).versao } catch { $res += 'ERRO' }; Start-Sleep -Milliseconds 200 }; $res }
+Receive-Job $job -Wait | Group-Object | Select-Object Name, Count
 ```
 
 **Resultado:** `1.0=112, 2.0=106`, **nenhum ERRO**. A troca não derrubou a API, por causa de `maxSurge: 1`, `maxUnavailable: 0`, readinessProbe e `preStop: sleep 5`.
@@ -95,7 +96,7 @@ curl.exe -s http://localhost:30080/health
 kubectl set resources deployment loja-api -c api --requests=cpu=100m,memory=128Mi --limits=cpu=400m,memory=256Mi -n n3-guilherme
 kubectl annotate deployment/loja-api -n n3-guilherme kubernetes.io/change-cause="set resources: requests 100m/128Mi, limits 400m/256Mi" --overwrite
 kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=120s
-kubectl describe pod <pod-da-api> -n n3-guilherme
+kubectl describe pod loja-api-58446f7f66-td6sx -n n3-guilherme
 kubectl get pods -n n3-guilherme -l app=loja-api -o custom-columns=POD:.metadata.name,REQ_CPU:.spec.containers[0].resources.requests.cpu,REQ_MEM:.spec.containers[0].resources.requests.memory,LIM_CPU:.spec.containers[0].resources.limits.cpu,LIM_MEM:.spec.containers[0].resources.limits.memory,QOS:.status.qosClass
 ```
 
@@ -106,6 +107,9 @@ kubectl get pods -n n3-guilherme -l app=loja-api -o custom-columns=POD:.metadata
 ```powershell
 kubectl top nodes
 kubectl top pods -n n3-guilherme
+kubectl autoscale deployment loja-api --min=2 --max=6 --cpu-percent=50 -n n3-guilherme
+kubectl patch hpa loja-api -n n3-guilherme --type=merge --patch-file k8s-extras/hpa-behavior-patch.json
+kubectl delete hpa loja-api -n n3-guilherme
 kubectl autoscale deployment loja-api --min=2 --max=6 --cpu=50% -n n3-guilherme
 kubectl patch hpa loja-api -n n3-guilherme --type=merge --patch-file k8s-extras/hpa-behavior-patch.json
 kubectl get hpa loja-api -n n3-guilherme -w
@@ -114,9 +118,11 @@ kubectl get hpa loja-api -n n3-guilherme -w
 > Na primeira vez usei `--cpu-percent=50`, que o kubectl 1.36 avisou estar obsoleto (`Use --cpu with percentage`). Apaguei o HPA e recriei com `--cpu=50%`.
 > O patch `hpa-behavior-patch.json` reduz a janela de estabilização da descida de 300 s (padrão) para 60 s, só para a demonstração caber no tempo da aula.
 
-Em outro terminal, a carga **dentro do cluster** (3 pods busybox com `wget` em loop no Service `loja-api`):
+Com o `-w` aberto, rodei no outro terminal, nesta ordem: ~1 min sem carga (**antes**), carga **dentro do cluster** por 4 min (**durante**: 3 pods busybox com `wget` em loop no Service `loja-api`), e então desliguei a carga (**depois**). A cada 15 s também registrei `kubectl get hpa loja-api -n n3-guilherme` com o horário (arquivo [`evidencias/parte4-hpa.txt`](evidencias/parte4-hpa.txt)).
 
 ```powershell
+kubectl get hpa -n n3-guilherme
+kubectl top pods -n n3-guilherme
 kubectl apply -f k8s-extras/gerador-carga.yaml
 kubectl top pods -n n3-guilherme
 kubectl get pods -n n3-guilherme -l app=loja-api
@@ -124,6 +130,7 @@ kubectl describe hpa loja-api -n n3-guilherme
 kubectl delete -f k8s-extras/gerador-carga.yaml
 kubectl get hpa -n n3-guilherme
 kubectl top pods -n n3-guilherme
+kubectl describe hpa loja-api -n n3-guilherme
 ```
 
 **Resultado** (ver [`evidencias/parte4-hpa-watch.txt`](evidencias/parte4-hpa-watch.txt)):
@@ -150,15 +157,37 @@ kubectl describe node docker-desktop
 
 ## Bônus
 
-### Canary (versão 3.0 para ~1/3 do tráfego)
+Ordem real: build da 3.0 (10:36, ainda durante o teste do HPA), Ingress (10:38–10:39) e canary (10:41–10:42).
 
 ```powershell
 docker build -t loja-api:3.0 --build-arg APP_VERSION=3.0 ./app
+docker images loja-api
+```
+
+### Ingress
+
+```powershell
+kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
+kubectl wait --namespace ingress-nginx --for=condition=Ready pod --selector=app.kubernetes.io/component=controller --timeout=240s
+kubectl get svc -n ingress-nginx
+kubectl apply -f k8s-extras/ingress.yaml
+kubectl get ingress -n n3-guilherme
+curl.exe -s -H "Host: loja.localhost" http://localhost/
+curl.exe -s http://loja.localhost/health
+curl.exe -s -o NUL -w "%{http_code}" -H "Host: outro.localhost" http://localhost/
+```
+
+**Resultado:** a API responde na porta 80 pelo host `loja.localhost`, e um host fora das regras recebe `404`.
+
+### Canary (versão 3.0 para ~1/3 do tráfego)
+
+```powershell
 kubectl apply -f k8s-extras/canary.yaml
 kubectl rollout status deployment/loja-api-canary -n n3-guilherme --timeout=120s
 kubectl get pods -n n3-guilherme -l app=loja-api -L track
 kubectl get endpointslices -n n3-guilherme -l kubernetes.io/service-name=loja-api
 1..90 | ForEach-Object { (curl.exe -s http://localhost:30080/health | ConvertFrom-Json).versao } | Group-Object | ForEach-Object { "versao $($_.Name): $($_.Count) de 90 requisicoes" }
+curl.exe -s -i http://localhost:30080/ | Select-String "X-App-Version|X-Pod|versao"
 ```
 
 **Resultado:** com 2 pods stable (2.0) e 1 canary (3.0) atrás do mesmo Service, `versao 2.0: 65` e `versao 3.0: 25` de 90 requisições (28% no canary). Depois promovi a versão:
@@ -168,22 +197,12 @@ kubectl set image deployment/loja-api api=loja-api:3.0 -n n3-guilherme
 kubectl annotate deployment/loja-api -n n3-guilherme kubernetes.io/change-cause="promove canary: 3.0 para todos" --overwrite
 kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=180s
 kubectl delete -f k8s-extras/canary.yaml
-```
-
-Resultado: 30 de 30 requisições na 3.0.
-
-### Ingress
-
-```powershell
-kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
-kubectl wait --namespace ingress-nginx --for=condition=Ready pod --selector=app.kubernetes.io/component=controller --timeout=240s
-kubectl apply -f k8s-extras/ingress.yaml
+kubectl get pods -n n3-guilherme -l app=loja-api -L track
+1..30 | ForEach-Object { (curl.exe -s http://localhost:30080/health | ConvertFrom-Json).versao } | Group-Object | ForEach-Object { "versao $($_.Name): $($_.Count) de 30 requisicoes" }
 kubectl get ingress -n n3-guilherme
-curl.exe -s -H "Host: loja.localhost" http://localhost/
-curl.exe -s http://loja.localhost/health
 ```
 
-Resultado: a API responde na porta 80 pelo host `loja.localhost`; um host fora das regras recebe 404.
+**Resultado:** 30 de 30 requisições na 3.0.
 
 ## Evidências finais (estado ao terminar)
 
