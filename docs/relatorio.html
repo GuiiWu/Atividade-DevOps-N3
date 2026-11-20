@@ -1,0 +1,820 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<title>Relatório N3 - Guilherme Bastian</title>
+<style>
+  @page { size: A4; margin: 16mm 14mm 16mm 14mm; }
+  * { box-sizing: border-box; }
+  body { font-family: "Segoe UI", Arial, sans-serif; font-size: 10.5pt; color: #1d2433; line-height: 1.45; margin: 0; }
+  h1 { color: #0b3a8c; font-size: 20pt; margin: 0 0 6px; }
+  h2 { color: #0b3a8c; font-size: 14pt; border-bottom: 2px solid #0b3a8c; padding-bottom: 3px; margin: 22px 0 8px; break-after: avoid; }
+  h3 { color: #1a56c4; font-size: 11.5pt; margin: 16px 0 6px; break-after: avoid; }
+  p, li { text-align: justify; }
+  code { font-family: Consolas, "Courier New", monospace; font-size: 9pt; background: #eef2f8; padding: 0 3px; border-radius: 3px; }
+  pre { font-family: Consolas, "Courier New", monospace; font-size: 7.9pt; line-height: 1.3; background: #f4f6fa; border: 1px solid #d5dbe6; border-left: 3px solid #1a56c4; padding: 6px 8px; white-space: pre-wrap; word-break: break-all; margin: 6px 0 10px; }
+  table { border-collapse: collapse; width: 100%; margin: 6px 0 12px; font-size: 9.5pt; }
+  th, td { border: 1px solid #c7cfdd; padding: 4px 6px; text-align: left; vertical-align: top; }
+  th { background: #0b3a8c; color: #fff; }
+  .capa { height: 255mm; display: flex; flex-direction: column; justify-content: space-between; break-after: page; }
+  .capa .topo { border-top: 6px solid #0b3a8c; padding-top: 18mm; }
+  .capa .inst { font-size: 12pt; color: #4a5568; }
+  .capa h1 { font-size: 26pt; margin-top: 30mm; }
+  .capa .sub { font-size: 14pt; color: #1a56c4; }
+  .capa .dados { font-size: 12pt; line-height: 1.9; }
+  .capa .dados b { display: inline-block; width: 42mm; color: #0b3a8c; }
+  .nota { background: #fff8e1; border-left: 4px solid #e8a400; padding: 6px 10px; margin: 8px 0; font-size: 9.5pt; }
+  .ok { color: #1b7a33; font-weight: 600; }
+  .pagina { break-before: page; }
+  .pergunta { break-inside: avoid-page; }
+</style>
+</head>
+<body>
+
+<section class="capa">
+  <div class="topo">
+    <div class="inst">UNIFASIPE · Análise e Desenvolvimento de Sistemas<br>DevOps &amp; Cloud Computing · Prof. Marcelo Linck</div>
+    <h1>Atividade Avaliativa N3</h1>
+    <div class="sub">Aplicação containerizada e orquestrada:<br>Docker, Docker Compose e Kubernetes</div>
+  </div>
+  <div class="dados">
+    <div><b>Aluno</b> Guilherme Bastian</div>
+    <div><b>Turma</b> ADS · 4º semestre</div>
+    <div><b>Namespace</b> <code>n3-guilherme</code></div>
+    <div><b>Data</b> 20/11/2026</div>
+    <div><b>Repositório</b> github.com/GuiiWu/Atividade-DevOps-N3</div>
+    <div><b>Ambiente</b> Docker Desktop 4.99 · Kubernetes v1.36.1 (kubeadm) · Windows 11</div>
+  </div>
+</section>
+
+<h2>1. Visão geral</h2>
+<p>Desenvolvi uma API "Loja" em Node.js (Express) que guarda produtos no <b>MySQL</b> e usa o <b>Redis</b> como cache da lista de produtos e contador de visitas compartilhado entre as réplicas. Toda a configuração vem de variáveis de ambiente. Por isso a mesma imagem roda com <code>docker run</code>, no Compose (<code>.env</code>) e no Kubernetes (ConfigMap + Secret). A API tem duas rotas de saúde: <code>/health</code> (liveness: o processo está vivo) e <code>/ready</code> (readiness: banco e Redis respondem). Todas as respostas trazem a versão e o nome do pod que atendeu, o que deixa visíveis o balanceamento, o rolling update e o canary.</p>
+<table>
+  <tr><th>Parte</th><th>O que foi feito</th><th>Resultado</th></tr>
+  <tr><td>1 · Docker</td><td>Dockerfile multi-stage (node:22-alpine), usuário <code>node</code>, HEALTHCHECK, <code>.dockerignore</code>, imagem <code>loja-api:1.0</code></td><td class="ok">63,3 MB, roda sem root</td></tr>
+  <tr><td>2 · Compose</td><td>API + MySQL 8.4 + Redis 7, volumes nomeados, <code>.env</code>, healthchecks, <code>depends_on: service_healthy</code></td><td class="ok">dado sobreviveu a down + up</td></tr>
+  <tr><td>3 · Kubernetes</td><td>Namespace, ConfigMap, Secret, MySQL (PVC + Deployment Recreate + Service), Redis, API (2 réplicas, probes, requests/limits, initContainer) + NodePort</td><td class="ok">dado sobreviveu a apagar o pod do MySQL</td></tr>
+  <tr><td>4 · Operação</td><td>scale 2→4→2, rolling update 1.0→2.0, imagem inexistente + undo, set resources, HPA, describe node</td><td class="ok">0 erros no rolling update; HPA 2 → 6 → 2</td></tr>
+  <tr><td>Bônus</td><td>multi-stage, canary com 2 Deployments e 1 Service, Ingress NGINX</td><td class="ok">canary com 28% do tráfego e promovido; Ingress em http://loja.localhost</td></tr>
+</table>
+
+<h2>2. Parte 1: Docker</h2>
+<p>Construí a imagem com a tag 1.0. O <code>docker history</code> mostra que a imagem final só tem as camadas do estágio <i>runtime</i>: o npm cache e os arquivos do estágio <i>deps</i> ficaram para trás.</p>
+<pre>[2026-11-20 10:21:06] PS&gt; docker images loja-api
+IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA
+loja-api:1.0   187147bc8e95        256MB         63.3MB</pre>
+<pre>[2026-11-20 10:21:07] PS&gt; docker history loja-api:1.0 --format "table {{.CreatedBy}}\t{{.Size}}"
+CREATED BY                                      SIZE
+CMD ["node" "src/server.js"]                    0B
+HEALTHCHECK {Test:[CMD-SHELL node -e "fetch(…   0B
+EXPOSE 3000/tcp                                 0B
+USER node                                       0B
+COPY --chown=node:node src ./src # buildkit     36.9kB
+COPY --chown=node:node package.json ./ # bui…   12.3kB
+COPY --chown=node:node /app/node_modules ./n…   15MB
+WORKDIR /app                                    8.19kB
+LABEL org.opencontainers.image.title=loja-ap…   0B
+ENV NODE_ENV=production PORT=3000 APP_VERSIO…   0B
+ARG APP_VERSION=1.0                             0B
+CMD ["node"]                                    0B
+ENTRYPOINT ["docker-entrypoint.sh"]             0B
+COPY docker-entrypoint.sh /usr/local/bin/ # …   20.5kB
+RUN /bin/sh -c apk add --no-cache --virtual …   5.48MB
+ENV YARN_VERSION=1.22.22                        0B
+RUN /bin/sh -c addgroup -g 1000 node     &amp;&amp; …   163MB
+ENV NODE_VERSION=22.23.5                        0B
+CMD ["/bin/sh"]                                 0B
+ADD alpine-minirootfs-3.24.4-x86_64.tar.gz /…   9.09MB</pre>
+<p>O container roda como o usuário <code>node</code>, e não como root. Sem banco, a liveness responde 200 e a readiness responde 503, que é o comportamento esperado:</p>
+<pre>[2026-11-20 10:21:07] PS&gt; docker run --rm loja-api:1.0 whoami
+node</pre>
+<pre>[2026-11-20 10:21:12] PS&gt; curl.exe -s -i http://localhost:3001/health
+HTTP/1.1 200 OK
+X-Powered-By: Express
+X-App-Version: 1.0
+X-Pod: e3e28314cdcf
+Content-Type: application/json; charset=utf-8
+Content-Length: 43
+ETag: W/"2b-SmY2k2CEMKv0Cqi7HE+K7hhotX4"
+Date: Fri, 20 Nov 2026 14:21:12 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"status":"ok","versao":"1.0","uptime_s":4}</pre>
+<pre>[2026-11-20 10:21:12] PS&gt; curl.exe -s -i -m 10 http://localhost:3001/ready
+HTTP/1.1 503 Service Unavailable
+X-Powered-By: Express
+X-App-Version: 1.0
+X-Pod: e3e28314cdcf
+Content-Type: application/json; charset=utf-8
+Content-Length: 50
+ETag: W/"32-MyOIPz7qBDuZsIpYL4h+6CqIJKQ"
+Date: Fri, 20 Nov 2026 14:21:12 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"pronto":false,"mysql":"falhou","redis":"falhou"}</pre>
+<pre>[2026-11-20 10:21:12] PS&gt; docker logs loja-teste
+[api] loja-api 1.0 ouvindo na porta 3000
+[redis] indisponível: ECONNREFUSED
+[db] banco indisponível (tentativa 1/30): ECONNREFUSED
+[db] banco indisponível (tentativa 2/30): ECONNREFUSED</pre>
+
+<h2>3. Parte 2: Docker Compose</h2>
+<p>O Compose sobe primeiro MySQL e Redis. A API só inicia quando os dois ficam <b>healthy</b>. Na primeira chamada a <code>/produtos</code> a lista vem do MySQL, e na segunda vem do cache do Redis.</p>
+<pre>[2026-11-20 10:23:07] PS&gt; docker compose ps
+NAME         IMAGE            COMMAND                  SERVICE   CREATED          STATUS                                     PORTS
+loja-api     loja-api:1.0     "docker-entrypoint.s…"   api       17 seconds ago   Up Less than a second (health: starting)   0.0.0.0:3000-&gt;3000/tcp, [::]:3000-&gt;3000/tcp
+loja-mysql   mysql:8.4        "docker-entrypoint.s…"   mysql     17 seconds ago   Up 16 seconds (healthy)                    3306/tcp, 33060/tcp
+loja-redis   redis:7-alpine   "docker-entrypoint.s…"   redis     17 seconds ago   Up 16 seconds (healthy)                    6379/tcp</pre>
+<pre>[2026-11-20 10:23:12] PS&gt; curl.exe -s http://localhost:3000/ready
+{"pronto":true,"mysql":"ok","redis":"ok"}</pre>
+<pre>[2026-11-20 10:23:12] PS&gt; curl.exe -s http://localhost:3000/produtos
+{"origem":"mysql","produtos":[{"id":1,"nome":"Teclado","preco":"149.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":2,"nome":"Mouse","preco":"79.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":3,"nome":"Monitor","preco":"899.00","criado_em":"2026-11-20T14:23:07.000Z"}]}</pre>
+<pre>[2026-11-20 10:23:12] PS&gt; curl.exe -s http://localhost:3000/produtos
+{"origem":"cache","produtos":[{"id":1,"nome":"Teclado","preco":"149.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":2,"nome":"Mouse","preco":"79.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":3,"nome":"Monitor","preco":"899.00","criado_em":"2026-11-20T14:23:07.000Z"}]}</pre>
+<pre>[2026-11-20 10:23:12] PS&gt; Invoke-RestMethod -Method Post -Uri http://localhost:3000/produtos -ContentType "application/json; charset=utf-8" -Body '{"nome":"Produto do Guilherme (Compose)","preco":42.5}' | ConvertTo-Json -Compress
+{"id":4,"nome":"Produto do Guilherme (Compose)","preco":"42.50","criado_em":"2026-11-20T14:23:12.000Z"}</pre>
+<h3>Prova de persistência: <code>docker compose down</code> + <code>up</code></h3>
+<pre>[2026-11-20 10:23:20] PS&gt; docker compose down
+ Container loja-api Stopping 
+ Container loja-api Stopped 
+ Container loja-api Removing 
+ Container loja-api Removed 
+ Container loja-redis Stopping 
+ Container loja-mysql Stopping 
+ Container loja-redis Stopped 
+ Container loja-redis Removing 
+ Container loja-redis Removed 
+ Container loja-mysql Stopped 
+ Container loja-mysql Removing 
+ Container loja-mysql Removed 
+ Network loja_loja Removing 
+ Network loja_loja Removed</pre>
+<pre>[2026-11-20 10:23:21] PS&gt; docker volume ls --filter name=loja
+DRIVER    VOLUME NAME
+local     loja_mysql_data
+local     loja_redis_data</pre>
+<pre>[2026-11-20 10:23:36] PS&gt; docker compose ps
+NAME         IMAGE            COMMAND                  SERVICE   CREATED          STATUS                    PORTS
+loja-api     loja-api:1.0     "docker-entrypoint.s…"   api       15 seconds ago   Up 8 seconds (healthy)    0.0.0.0:3000-&gt;3000/tcp, [::]:3000-&gt;3000/tcp
+loja-mysql   mysql:8.4        "docker-entrypoint.s…"   mysql     15 seconds ago   Up 14 seconds (healthy)   3306/tcp, 33060/tcp
+loja-redis   redis:7-alpine   "docker-entrypoint.s…"   redis     15 seconds ago   Up 14 seconds (healthy)   6379/tcp</pre>
+<pre>[2026-11-20 10:23:36] PS&gt; curl.exe -s http://localhost:3000/produtos/4
+{"id":4,"nome":"Produto do Guilherme (Compose)","preco":"42.50","criado_em":"2026-11-20T14:23:12.000Z"}</pre>
+<pre>[2026-11-20 10:23:36] PS&gt; curl.exe -s http://localhost:3000/
+{"app":"loja-api","versao":"1.0","mensagem":"Bem-vindo à Loja","pod":"160fff18364b","visitas":2,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}</pre>
+<p>O <code>down</code> removeu containers e rede, mas não os volumes <code>loja_mysql_data</code> e <code>loja_redis_data</code>. Depois do <code>up</code> o produto 4 continuava no banco, e o contador de visitas continuou de 1 para 2 porque o Redis usa <code>appendonly</code> no volume.</p>
+
+<h2>4. Parte 3: Kubernetes com YAML</h2>
+<pre>[2026-11-20 10:27:50] PS&gt; kubectl apply -f k8s/
+namespace/n3-guilherme created
+configmap/loja-api-config created
+secret/loja-db-secret created
+persistentvolumeclaim/mysql-pvc created
+deployment.apps/mysql created
+service/mysql created
+deployment.apps/redis created
+service/redis created
+deployment.apps/loja-api created
+service/loja-api created</pre>
+<pre>[2026-11-20 10:28:24] PS&gt; kubectl get pvc,configmap,secret -n n3-guilherme
+NAME                              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+persistentvolumeclaim/mysql-pvc   Bound    pvc-7e862ea2-8320-41ec-a7c9-117b844d5d4c   1Gi        RWO            hostpath       &lt;unset&gt;                 34s
+
+NAME                         DATA   AGE
+configmap/kube-root-ca.crt   1      34s
+configmap/loja-api-config    9      34s
+
+NAME                    TYPE     DATA   AGE
+secret/loja-db-secret   Opaque   2      34s</pre>
+<p><b>Labels e selectors.</b> Todos os pods da API têm <code>app=loja-api</code>. Os pods oficiais também têm <code>track=stable</code>. O Deployment seleciona <code>app=loja-api,track=stable</code>, e o Service seleciona só <code>app=loja-api</code>. Os IPs que o Service encontrou aparecem no EndpointSlice:</p>
+<pre>[2026-11-20 10:28:25] PS&gt; kubectl get endpointslices -n n3-guilherme
+NAME             ADDRESSTYPE   PORTS   ENDPOINTS            AGE
+loja-api-bfzc7   IPv4          3000    10.1.0.9,10.1.0.10   35s
+mysql-gjqc4      IPv4          3306    10.1.0.8             35s
+redis-72ckf      IPv4          6379    10.1.0.11            35s</pre>
+<pre>[2026-11-20 10:28:25] PS&gt; kubectl get pods -n n3-guilherme --show-labels
+NAME                        READY   STATUS    RESTARTS   AGE   LABELS
+loja-api-659d7966f6-6npv8   1/1     Running   0          35s   app=loja-api,pod-template-hash=659d7966f6,track=stable
+loja-api-659d7966f6-wlrg4   1/1     Running   0          35s   app=loja-api,pod-template-hash=659d7966f6,track=stable
+mysql-6cc88c9f9c-v8m9z      1/1     Running   0          35s   app=mysql,pod-template-hash=6cc88c9f9c
+redis-5d78967f89-hnzjf      1/1     Running   0          35s   app=redis,pod-template-hash=5d78967f89</pre>
+<p>O initContainer <code>espera-mysql</code> segurou a API até a porta 3306 responder:</p>
+<pre>[2026-11-20 10:28:25] PS&gt; kubectl logs loja-api-659d7966f6-6npv8 -n n3-guilherme -c espera-mysql
+aguardando mysql...
+aguardando mysql...
+aguardando mysql...
+mysql respondeu</pre>
+<p>Acesso pelo NodePort (<code>localhost:30080</code>). Cada chamada foi atendida por um pod diferente, e o contador no Redis é compartilhado entre eles:</p>
+<pre>[2026-11-20 10:28:25] PS&gt; curl.exe -s http://localhost:30080/
+{"app":"loja-api","versao":"1.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-659d7966f6-wlrg4","visitas":1,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}</pre>
+<pre>[2026-11-20 10:28:25] PS&gt; curl.exe -s http://localhost:30080/
+{"app":"loja-api","versao":"1.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-659d7966f6-6npv8","visitas":2,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}</pre>
+<pre>[2026-11-20 10:28:25] PS&gt; Invoke-RestMethod -Method Post -Uri http://localhost:30080/produtos -ContentType "application/json; charset=utf-8" -Body '{"nome":"Produto do Guilherme (Kubernetes)","preco":99.9}' | ConvertTo-Json -Compress
+{"id":4,"nome":"Produto do Guilherme (Kubernetes)","preco":"99.90","criado_em":"2026-11-20T14:28:25.000Z"}</pre>
+<h3>Prova de persistência: apagar o pod do MySQL</h3>
+<pre>[2026-11-20 10:28:37] PS&gt; kubectl delete pod -n n3-guilherme -l app=mysql
+pod "mysql-6cc88c9f9c-v8m9z" deleted from n3-guilherme namespace</pre>
+<pre>[2026-11-20 10:28:50] PS&gt; kubectl get pods -n n3-guilherme -l app=mysql
+NAME                     READY   STATUS    RESTARTS   AGE
+mysql-6cc88c9f9c-9pgj9   1/1     Running   0          17s</pre>
+<pre>[2026-11-20 10:29:30] PS&gt; kubectl exec -n n3-guilherme deploy/mysql -- mysql -uloja -ptroque-loja-123 loja -e "SELECT id, nome, preco FROM produtos"
+mysql: [Warning] Using a password on the command line interface can be insecure.
+id	nome	preco
+1	Teclado	149.90
+2	Mouse	79.90
+3	Monitor	899.00
+4	Produto do Guilherme (Kubernetes)	99.90</pre>
+<pre>[2026-11-20 10:29:21] PS&gt; curl.exe -s http://localhost:30080/produtos/4
+{"id":4,"nome":"Produto do Guilherme (Kubernetes)","preco":"99.90","criado_em":"2026-11-20T14:28:25.000Z"}</pre>
+<p>O pod <code>mysql-…-v8m9z</code> foi apagado e o Deployment criou o <code>mysql-…-9pgj9</code>. Como o diretório <code>/var/lib/mysql</code> está no PVC <code>mysql-pvc</code>, que existe independente do pod, o produto 4 continuou lá.</p>
+
+<h2 class="pagina">5. Evidências obrigatórias</h2>
+<h3>5.1 <code>kubectl get all -n n3-guilherme</code></h3>
+<pre>[2026-11-20 10:42:04] PS&gt; kubectl get all -n n3-guilherme
+NAME                            READY   STATUS    RESTARTS   AGE
+pod/loja-api-57968f59f9-mgt95   1/1     Running   0          24s
+pod/loja-api-57968f59f9-q5xdg   1/1     Running   0          32s
+pod/mysql-6cc88c9f9c-9pgj9      1/1     Running   0          13m
+pod/redis-5d78967f89-hnzjf      1/1     Running   0          14m
+
+NAME               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE
+service/loja-api   NodePort    10.102.166.7     &lt;none&gt;        80:30080/TCP   14m
+service/mysql      ClusterIP   10.99.16.20      &lt;none&gt;        3306/TCP       14m
+service/redis      ClusterIP   10.104.138.214   &lt;none&gt;        6379/TCP       14m
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE
+deployment.apps/loja-api   2/2     2            2           14m
+deployment.apps/mysql      1/1     1            1           14m
+deployment.apps/redis      1/1     1            1           14m
+
+NAME                                  DESIRED   CURRENT   READY   AGE
+replicaset.apps/loja-api-57968f59f9   2         2         2       32s
+replicaset.apps/loja-api-58446f7f66   0         0         0       10m
+replicaset.apps/loja-api-5fbd9554c    0         0         0       11m
+replicaset.apps/loja-api-659d7966f6   0         0         0       14m
+replicaset.apps/loja-api-7fbbb68db7   0         0         0       10m
+replicaset.apps/mysql-6cc88c9f9c      1         1         1       14m
+replicaset.apps/redis-5d78967f89      1         1         1       14m
+
+NAME                                           REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+horizontalpodautoscaler.autoscaling/loja-api   Deployment/loja-api   cpu: 7%/50%   2         6         2          9m11s</pre>
+<h3>5.2 <code>kubectl describe deployment</code> da API</h3>
+<pre>[2026-11-20 10:42:05] PS&gt; kubectl describe deployment loja-api -n n3-guilherme
+Name:                   loja-api
+Namespace:              n3-guilherme
+CreationTimestamp:      Fri, 20 Nov 2026 10:27:50 -0400
+Labels:                 app=loja-api
+Annotations:            deployment.kubernetes.io/revision: 6
+                        kubernetes.io/change-cause: promove canary: 3.0 para todos
+Selector:               app=loja-api,track=stable
+Replicas:               2 desired | 2 updated | 2 total | 2 available | 0 unavailable
+StrategyType:           RollingUpdate
+MinReadySeconds:        0
+RollingUpdateStrategy:  0 max unavailable, 1 max surge
+Pod Template:
+  Labels:  app=loja-api
+           track=stable
+  Init Containers:
+   espera-mysql:
+    Image:      busybox:1.36
+    Port:       &lt;none&gt;
+    Host Port:  &lt;none&gt;
+    Command:
+      sh
+      -c
+      until nc -z -w 2 mysql 3306; do echo 'aguardando mysql...'; sleep 2; done; echo 'mysql respondeu'
+    Limits:
+      cpu:     50m
+      memory:  32Mi
+    Requests:
+      cpu:        10m
+      memory:     16Mi
+    Environment:  &lt;none&gt;
+    Mounts:       &lt;none&gt;
+  Containers:
+   api:
+    Image:      loja-api:3.0
+    Port:       3000/TCP (http)
+    Host Port:  0/TCP (http)
+    Limits:
+      cpu:     400m
+      memory:  256Mi
+    Requests:
+      cpu:      100m
+      memory:   128Mi
+    Liveness:   http-get http://:http/health delay=15s timeout=1s period=10s #success=1 #failure=3
+    Readiness:  http-get http://:http/ready delay=5s timeout=1s period=5s #success=1 #failure=3
+    Environment Variables from:
+      loja-api-config  ConfigMap  Optional: false
+    Environment:
+      DB_PASSWORD:  &lt;set to the key 'MYSQL_PASSWORD' in secret 'loja-db-secret'&gt;  Optional: false
+    Mounts:         &lt;none&gt;
+  Volumes:          &lt;none&gt;
+  Node-Selectors:   &lt;none&gt;
+  Tolerations:      &lt;none&gt;
+Conditions:
+  Type           Status  Reason
+  ----           ------  ------
+  Available      True    MinimumReplicasAvailable
+  Progressing    True    NewReplicaSetAvailable
+OldReplicaSets:  loja-api-659d7966f6 (0/0 replicas created), loja-api-5fbd9554c (0/0 replicas created), loja-api-7fbbb68db7 (0/0 replicas created), loja-api-58446f7f66 (0/0 replicas created)
+NewReplicaSet:   loja-api-57968f59f9 (2/2 replicas created)
+Events:
+  Type    Reason             Age                 From                   Message
+  ----    ------             ----                ----                   -------
+  Normal  ScalingReplicaSet  14m                 deployment-controller  Scaled up replica set loja-api-659d7966f6 from 0 to 2
+  Normal  ScalingReplicaSet  12m                 deployment-controller  Scaled up replica set loja-api-659d7966f6 from 2 to 4
+  Normal  ScalingReplicaSet  12m                 deployment-controller  Scaled down replica set loja-api-659d7966f6 from 4 to 2
+  Normal  ScalingReplicaSet  11m                 deployment-controller  Scaled up replica set loja-api-5fbd9554c from 0 to 1
+  Normal  ScalingReplicaSet  11m                 deployment-controller  Scaled down replica set loja-api-659d7966f6 from 2 to 1
+  Normal  ScalingReplicaSet  11m                 deployment-controller  Scaled up replica set loja-api-5fbd9554c from 1 to 2
+  Normal  ScalingReplicaSet  11m                 deployment-controller  Scaled down replica set loja-api-659d7966f6 from 1 to 0
+  Normal  ScalingReplicaSet  10m                 deployment-controller  Scaled up replica set loja-api-7fbbb68db7 from 0 to 1
+  Normal  ScalingReplicaSet  10m                 deployment-controller  Scaled down replica set loja-api-7fbbb68db7 from 1 to 0
+  Normal  ScalingReplicaSet  17s (x10 over 10m)  deployment-controller  (combined from similar events): Scaled down replica set loja-api-58446f7f66 from 1 to 0</pre>
+<h3>5.3 <code>kubectl rollout history</code></h3>
+<pre>[2026-11-20 10:42:05] PS&gt; kubectl rollout history deployment/loja-api -n n3-guilherme
+deployment.apps/loja-api 
+REVISION  CHANGE-CAUSE
+1         versao inicial 1.0 (kubectl apply -f k8s/)
+3         falha proposital: imagem 9.9-nao-existe
+4         atualiza para 2.0 (kubectl set image)
+5         set resources: requests 100m/128Mi, limits 400m/256Mi
+6         promove canary: 3.0 para todos</pre>
+<h3>5.4 <code>kubectl get hpa -w</code>: antes, durante e depois da carga</h3>
+<p>Saída crua do <code>kubectl get hpa loja-api -n n3-guilherme -w</code>, que ficou aberto durante todo o teste:</p>
+<pre>[2026-11-20 10:32:53] PS&gt; kubectl get hpa loja-api -n n3-guilherme -w
+NAME       REFERENCE             TARGETS              MINPODS   MAXPODS   REPLICAS   AGE
+loja-api   Deployment/loja-api   cpu: &lt;unknown&gt;/50%   2         6         0          0s
+loja-api   Deployment/loja-api   cpu: 1%/50%          2         6         2          39s
+loja-api   Deployment/loja-api   cpu: 311%/50%        2         6         2          99s
+loja-api   Deployment/loja-api   cpu: 207%/50%        2         6         6          2m39s
+loja-api   Deployment/loja-api   cpu: 214%/50%        2         6         6          3m39s
+loja-api   Deployment/loja-api   cpu: 208%/50%        2         6         6          4m39s
+loja-api   Deployment/loja-api   cpu: 2%/50%          2         6         6          6m39s
+loja-api   Deployment/loja-api   cpu: 1%/50%          2         6         2          7m39s</pre>
+<p>Como o <code>-w</code> não mostra horário, registrei também uma "foto" a cada 15 s com a fase do teste:</p>
+<pre>Fotos a cada 15 s de: kubectl get hpa loja-api -n n3-guilherme
+COLUNAS: NAME REFERENCE TARGETS(uso/alvo) MINPODS MAXPODS REPLICAS AGE
+[10:32:53] ANTES    loja-api   Deployment/loja-api   cpu: &lt;unknown&gt;/50%   2     6     0     0s
+[10:33:08] ANTES    loja-api   Deployment/loja-api   cpu: &lt;unknown&gt;/50%   2     6     0     15s
+[10:33:23] ANTES    loja-api   Deployment/loja-api   cpu: &lt;unknown&gt;/50%   2     6     0     30s
+[10:33:38] ANTES    loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     45s
+[10:33:53] ANTES    loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     60s
+[10:34:09] DURANTE  loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     76s
+[10:34:24] DURANTE  loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     91s
+[10:34:39] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     106s
+[10:34:54] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m1s
+[10:35:09] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m16s
+[10:35:25] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m32s
+[10:35:40] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     2m47s
+[10:35:55] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m2s
+[10:36:10] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m17s
+[10:36:25] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m32s
+[10:36:40] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     3m47s
+[10:36:55] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m2s
+[10:37:11] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m18s
+[10:37:26] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m33s
+[10:37:41] DURANTE  loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     4m48s
+[10:37:56] DURANTE  loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m3s
+[10:38:11] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m18s
+[10:38:27] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m34s
+[10:38:42] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m49s
+[10:38:57] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     6m4s
+[10:39:12] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     6m19s
+[10:39:28] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     6m35s
+[10:39:43] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     6m50s
+[10:39:58] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     7m5s
+[10:40:13] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     7m20s
+[10:40:29] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     7m36s
+[10:40:44] DEPOIS   loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     7m51s</pre>
+<h3>5.5 <code>kubectl top pods</code></h3>
+<p>Durante a carga:</p>
+<pre>[2026-11-20 10:36:55] PS&gt; kubectl top pods -n n3-guilherme
+NAME                             CPU(cores)   MEMORY(bytes)   
+gerador-carga-6fd557bc6f-mq4l9   25m          2Mi             
+gerador-carga-6fd557bc6f-vvq24   22m          1Mi             
+gerador-carga-6fd557bc6f-xfk2q   25m          1Mi             
+loja-api-58446f7f66-j7q8c        189m         39Mi            
+loja-api-58446f7f66-jdh2p        205m         39Mi            
+loja-api-58446f7f66-lnc4s        267m         38Mi            
+loja-api-58446f7f66-td6sx        221m         33Mi            
+loja-api-58446f7f66-tjpq7        211m         37Mi            
+loja-api-58446f7f66-x795q        168m         37Mi            
+mysql-6cc88c9f9c-9pgj9           13m          432Mi           
+redis-5d78967f89-hnzjf           7m           3Mi</pre>
+<p>Depois da carga:</p>
+<pre>[2026-11-20 10:40:44] PS&gt; kubectl top pods -n n3-guilherme
+NAME                        CPU(cores)   MEMORY(bytes)   
+loja-api-58446f7f66-tjpq7   1m           37Mi            
+loja-api-58446f7f66-x795q   4m           24Mi            
+mysql-6cc88c9f9c-9pgj9      11m          432Mi           
+redis-5d78967f89-hnzjf      6m           4Mi</pre>
+<h3>5.6 <code>kubectl describe node</code></h3>
+<pre>[2026-11-20 10:32:58] PS&gt; kubectl describe node docker-desktop
+Name:               docker-desktop
+Roles:              control-plane
+Labels:             beta.kubernetes.io/arch=amd64
+                    beta.kubernetes.io/os=linux
+                    kubernetes.io/arch=amd64
+                    kubernetes.io/hostname=docker-desktop
+                    kubernetes.io/os=linux
+                    node-role.kubernetes.io/control-plane=
+                    node.kubernetes.io/exclude-from-external-load-balancers=
+Annotations:        node.alpha.kubernetes.io/ttl: 0
+                    volumes.kubernetes.io/controller-managed-attach-detach: true
+CreationTimestamp:  Fri, 20 Nov 2026 10:25:46 -0400
+Taints:             &lt;none&gt;
+Unschedulable:      false
+Lease:
+  HolderIdentity:  docker-desktop
+  AcquireTime:     &lt;unset&gt;
+  RenewTime:       Fri, 20 Nov 2026 10:32:48 -0400
+Conditions:
+  Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
+  ----             ------  -----------------                 ------------------                ------                       -------
+  MemoryPressure   False   Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:46 -0400   KubeletHasSufficientMemory   kubelet has sufficient memory available
+  DiskPressure     False   Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:46 -0400   KubeletHasNoDiskPressure     kubelet has no disk pressure
+  PIDPressure      False   Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:46 -0400   KubeletHasSufficientPID      kubelet has sufficient PID available
+  Ready            True    Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:47 -0400   KubeletReady                 kubelet is posting ready status
+Addresses:
+  InternalIP:  192.168.65.3
+  Hostname:    docker-desktop
+Capacity:
+  cpu:                12
+  ephemeral-storage:  1055762868Ki
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  memory:             8104720Ki
+  pods:               110
+Allocatable:
+  cpu:                12
+  ephemeral-storage:  972991057538
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  memory:             8002320Ki
+  pods:               110
+System Info:
+  Machine ID:                 935e4f6634bf45fe976d9f71e15898d2
+  System UUID:                935e4f6634bf45fe976d9f71e15898d2
+  Boot ID:                    b135e68e-2af2-4575-91b2-5fb2c1d5233d
+  Kernel Version:             6.18.58.1-microsoft-standard-WSL2
+  OS Image:                   Docker Desktop
+  Operating System:           linux
+  Architecture:               amd64
+  Container Runtime Version:  docker://29.9.3
+  Kubelet Version:            v1.36.1
+Non-terminated Pods:          (14 in total)
+  Namespace                   Name                                      CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
+  ---------                   ----                                      ------------  ----------  ---------------  -------------  ---
+  kube-system                 coredns-589f44dc88-blkpf                  100m (0%)     0 (0%)      70Mi (0%)        170Mi (2%)     7m4s
+  kube-system                 coredns-589f44dc88-nvltv                  100m (0%)     0 (0%)      70Mi (0%)        170Mi (2%)     7m4s
+  kube-system                 etcd-docker-desktop                       100m (0%)     0 (0%)      100Mi (1%)       0 (0%)         7m11s
+  kube-system                 kube-apiserver-docker-desktop             250m (2%)     0 (0%)      0 (0%)           0 (0%)         7m11s
+  kube-system                 kube-controller-manager-docker-desktop    200m (1%)     0 (0%)      0 (0%)           0 (0%)         7m11s
+  kube-system                 kube-proxy-5jpbx                          0 (0%)        0 (0%)      0 (0%)           0 (0%)         7m4s
+  kube-system                 kube-scheduler-docker-desktop             100m (0%)     0 (0%)      0 (0%)           0 (0%)         7m11s
+  kube-system                 metrics-server-5c48d6699f-plvrk           100m (0%)     0 (0%)      200Mi (2%)       0 (0%)         5m36s
+  kube-system                 storage-provisioner                       0 (0%)        0 (0%)      0 (0%)           0 (0%)         7m2s
+  kube-system                 vpnkit-controller                         0 (0%)        0 (0%)      0 (0%)           0 (0%)         7m2s
+  n3-guilherme                loja-api-58446f7f66-td6sx                 100m (0%)     400m (3%)   128Mi (1%)       256Mi (3%)     47s
+  n3-guilherme                loja-api-58446f7f66-tjpq7                 100m (0%)     400m (3%)   128Mi (1%)       256Mi (3%)     54s
+  n3-guilherme                mysql-6cc88c9f9c-9pgj9                    250m (2%)     1 (8%)      512Mi (6%)       1Gi (13%)      4m25s
+  n3-guilherme                redis-5d78967f89-hnzjf                    50m (0%)      200m (1%)   64Mi (0%)        128Mi (1%)     5m8s
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource           Requests      Limits
+  --------           --------      ------
+  cpu                1450m (12%)   2 (16%)
+  memory             1272Mi (16%)  2004Mi (25%)
+  ephemeral-storage  0 (0%)        0 (0%)
+  hugepages-1Gi      0 (0%)        0 (0%)
+  hugepages-2Mi      0 (0%)        0 (0%)
+Events:
+  Type    Reason          Age   From             Message
+  ----    ------          ----  ----             -------
+  Normal  RegisteredNode  7m5s  node-controller  Node docker-desktop event: Registered Node docker-desktop in Controller</pre>
+
+<h2 class="pagina">6. Parte 4: operação por comandos</h2>
+<p>Todos os comandos, na ordem, estão em <code>comandos.md</code>. As saídas completas estão em <code>evidencias/parte4-operacao.txt</code>.</p>
+<h3>6.1 Escalar na mão (2 → 4 → 2)</h3>
+<pre>[2026-11-20 10:29:37] PS&gt; kubectl scale deployment loja-api --replicas=4 -n n3-guilherme
+deployment.apps/loja-api scaled</pre>
+<pre>[2026-11-20 10:29:46] PS&gt; kubectl get pods -n n3-guilherme -l app=loja-api -o wide
+NAME                        READY   STATUS    RESTARTS   AGE    IP          NODE             NOMINATED NODE   READINESS GATES
+loja-api-659d7966f6-6npv8   1/1     Running   0          116s   10.1.0.10   docker-desktop   &lt;none&gt;           &lt;none&gt;
+loja-api-659d7966f6-bpsjh   1/1     Running   0          9s     10.1.0.13   docker-desktop   &lt;none&gt;           &lt;none&gt;
+loja-api-659d7966f6-k8wqj   1/1     Running   0          9s     10.1.0.14   docker-desktop   &lt;none&gt;           &lt;none&gt;
+loja-api-659d7966f6-wlrg4   1/1     Running   0          116s   10.1.0.9    docker-desktop   &lt;none&gt;           &lt;none&gt;</pre>
+<pre>[2026-11-20 10:29:46] PS&gt; kubectl scale deployment loja-api --replicas=2 -n n3-guilherme
+deployment.apps/loja-api scaled</pre>
+<pre>[2026-11-20 10:29:58] PS&gt; kubectl get deployment loja-api -n n3-guilherme
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+loja-api   2/2     2            2           2m8s</pre>
+<h3>6.2 Atualizar sem derrubar (1.0 → 2.0)</h3>
+<pre>[2026-11-20 10:30:18] PS&gt; kubectl set image deployment/loja-api api=loja-api:2.0 -n n3-guilherme
+deployment.apps/loja-api image updated</pre>
+<pre>[2026-11-20 10:30:34] PS&gt; kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=180s
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+deployment "loja-api" successfully rolled out</pre>
+<pre>[2026-11-20 10:30:35] PS&gt; kubectl rollout history deployment/loja-api -n n3-guilherme
+deployment.apps/loja-api 
+REVISION  CHANGE-CAUSE
+1         versao inicial 1.0 (kubectl apply -f k8s/)
+2         atualiza para 2.0 (kubectl set image)</pre>
+<pre>[2026-11-20 10:30:35] PS&gt; curl.exe -s http://localhost:30080/
+{"app":"loja-api","versao":"2.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-5fbd9554c-6qgg8","visitas":3,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+
+[2026-11-20 10:31:02] Teste de disponibilidade durante o rollout (Invoke-RestMethod /health a cada 200 ms por 45 s):
+Respostas por versao: 1.0=112, 2.0=106  (ERRO = requisicao que falhou)</pre>
+<pre>[2026-11-20 10:31:02] Teste de disponibilidade durante o rollout (Invoke-RestMethod /health a cada 200 ms por 45 s):
+Respostas por versao: 1.0=112, 2.0=106  (ERRO = requisicao que falhou)</pre>
+<p>Durante os 45 s do teste, 218 chamadas a <code>/health</code> foram respondidas, 112 pela 1.0 e 106 pela 2.0, sem nenhum erro. Isso se deve a <code>maxSurge: 1</code> / <code>maxUnavailable: 0</code> (o pod antigo só sai quando o novo está pronto), à readinessProbe e ao <code>preStop: sleep 5</code>, que dá tempo do Service tirar o pod da lista antes de ele parar.</p>
+<h3>6.3 Falha proposital e recuperação</h3>
+<pre>[2026-11-20 10:31:13] PS&gt; kubectl set image deployment/loja-api api=loja-api:9.9-nao-existe -n n3-guilherme
+deployment.apps/loja-api image updated</pre>
+<pre>[2026-11-20 10:31:53] PS&gt; kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=40s
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+error: timed out waiting for the condition</pre>
+<pre>[2026-11-20 10:31:53] PS&gt; kubectl get pods -n n3-guilherme -l app=loja-api
+NAME                        READY   STATUS             RESTARTS   AGE
+loja-api-5fbd9554c-5mg6h    1/1     Running            0          86s
+loja-api-5fbd9554c-6qgg8    1/1     Running            0          95s
+loja-api-7fbbb68db7-7cvlh   0/1     ImagePullBackOff   0          40s</pre>
+<pre>[2026-11-20 10:31:53] PS&gt; kubectl describe pod loja-api-7fbbb68db7-7cvlh -n n3-guilherme
+... (97 linhas omitidas; saída completa em evidencias/parte4-operacao.txt)</pre>
+<pre>(trecho do describe pod)
+Containers:
+  api:
+    Image:          loja-api:9.9-nao-existe
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Ready:          False
+Events:
+  Normal   BackOff  13s (x2 over 36s)  kubelet  spec.containers{api}: Back-off pulling image "loja-api:9.9-nao-existe"
+  Warning  Failed   13s (x2 over 36s)  kubelet  spec.containers{api}: Error: ImagePullBackOff
+  Normal   Pulling  1s (x3 over 38s)   kubelet  spec.containers{api}: Pulling image "loja-api:9.9-nao-existe"
+  Warning  Failed   0s (x3 over 37s)   kubelet  spec.containers{api}: Failed to pull image "loja-api:9.9-nao-existe": Error response
+           from daemon: pull access denied for loja-api, repository does not exist or may require 'docker login'
+  Warning  Failed   0s (x3 over 37s)   kubelet  spec.containers{api}: Error: ErrImagePull</pre>
+<pre>[2026-11-20 10:31:54] PS&gt; curl.exe -s http://localhost:30080/health
+{"status":"ok","versao":"2.0","uptime_s":85}</pre>
+<pre>[2026-11-20 10:31:54] PS&gt; kubectl rollout undo deployment/loja-api -n n3-guilherme
+Warning: resource deployments/loja-api was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.
+deployment.apps/loja-api rolled back</pre>
+<pre>[2026-11-20 10:31:54] PS&gt; kubectl rollout history deployment/loja-api -n n3-guilherme
+deployment.apps/loja-api 
+REVISION  CHANGE-CAUSE
+1         versao inicial 1.0 (kubectl apply -f k8s/)
+3         falha proposital: imagem 9.9-nao-existe
+4         atualiza para 2.0 (kubectl set image)</pre>
+<h3>6.4 Limitar recursos</h3>
+<pre>[2026-11-20 10:32:04] PS&gt; kubectl set resources deployment loja-api -c api --requests=cpu=100m,memory=128Mi --limits=cpu=400m,memory=256Mi -n n3-guilherme
+deployment.apps/loja-api resource requirements updated</pre>
+<pre>(trecho do kubectl describe pod, container "api")
+    Image:          loja-api:2.0
+    Limits:
+      cpu:     400m
+      memory:  256Mi
+    Requests:
+      cpu:      100m
+      memory:   128Mi
+QoS Class:                   Burstable</pre>
+<pre>[2026-11-20 10:32:19] PS&gt; kubectl get pods -n n3-guilherme -l app=loja-api -o custom-columns=POD:.metadata.name,REQ_CPU:.spec.containers[0].resources.requests.cpu,REQ_MEM:.spec.containers[0].resources.requests.memory,LIM_CPU:.spec.containers[0].resources.limits.cpu,LIM_MEM:.spec.containers[0].resources.limits.memory,QOS:.status.qosClass
+POD                         REQ_CPU   REQ_MEM   LIM_CPU   LIM_MEM   QOS
+loja-api-58446f7f66-td6sx   100m      128Mi     400m      256Mi     Burstable
+loja-api-58446f7f66-tjpq7   100m      128Mi     400m      256Mi     Burstable
+loja-api-5fbd9554c-6qgg8    100m      96Mi      500m      192Mi     Burstable</pre>
+<h3>6.5 Autoscaling (HPA)</h3>
+<pre>[2026-11-20 10:32:53] PS&gt; kubectl autoscale deployment loja-api --min=2 --max=6 --cpu=50% -n n3-guilherme
+horizontalpodautoscaler.autoscaling/loja-api autoscaled</pre>
+<pre>[2026-11-20 10:32:53] PS&gt; kubectl patch hpa loja-api -n n3-guilherme --type=merge --patch-file k8s-extras/hpa-behavior-patch.json
+horizontalpodautoscaler.autoscaling/loja-api patched</pre>
+<pre>[2026-11-20 10:34:09] PS&gt; kubectl apply -f k8s-extras/gerador-carga.yaml
+deployment.apps/gerador-carga created
+
+[10:34:09] DURANTE  loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     76s
+[10:34:24] DURANTE  loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     91s
+[10:34:39] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     106s
+[10:34:54] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m1s
+[10:35:09] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m16s
+[10:35:25] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m32s
+[10:35:40] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     2m47s
+[10:35:55] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m2s
+[10:36:10] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m17s
+[10:36:25] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m32s
+[10:36:40] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     3m47s</pre>
+<pre>[2026-11-20 10:36:55] PS&gt; kubectl get pods -n n3-guilherme -l app=loja-api
+NAME                        READY   STATUS    RESTARTS   AGE
+loja-api-58446f7f66-j7q8c   1/1     Running   0          2m23s
+loja-api-58446f7f66-jdh2p   1/1     Running   0          2m23s
+loja-api-58446f7f66-lnc4s   1/1     Running   0          2m23s
+loja-api-58446f7f66-td6sx   1/1     Running   0          4m44s
+loja-api-58446f7f66-tjpq7   1/1     Running   0          4m51s
+loja-api-58446f7f66-x795q   1/1     Running   0          2m23s
+
+[10:36:55] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m2s
+[10:37:11] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m18s
+[10:37:26] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m33s
+[10:37:41] DURANTE  loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     4m48s
+[10:37:56] DURANTE  loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m3s</pre>
+<pre>[2026-11-20 10:40:44] PS&gt; kubectl describe hpa loja-api -n n3-guilherme
+Name:                                                  loja-api
+Namespace:                                             n3-guilherme
+Labels:                                                &lt;none&gt;
+Annotations:                                           &lt;none&gt;
+CreationTimestamp:                                     Fri, 20 Nov 2026 10:32:53 -0400
+Reference:                                             Deployment/loja-api
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  1% (1m) / 50%
+Min replicas:                                          2
+Max replicas:                                          6
+Behavior:
+  Scale Up:
+    Stabilization Window: 0 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Pods     Value: 4    Period: 15 seconds
+      - Type: Percent  Value: 100  Period: 15 seconds
+  Scale Down:
+    Stabilization Window: 60 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Percent  Value: 100  Period: 15 seconds
+Deployment pods:       2 current / 2 desired
+Conditions:
+  Type            Status  Reason            Message
+  ----            ------  ------            -------
+  AbleToScale     True    ReadyForNewScale  recommended size matches current size
+  ScalingActive   True    ValidMetricFound  the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  True    TooFewReplicas    the desired replica count is less than the minimum replica count
+Events:
+  Type    Reason             Age    From                       Message
+  ----    ------             ----   ----                       -------
+  Normal  SuccessfulRescale  6m12s  horizontal-pod-autoscaler  New size: 6; reason: cpu resource utilization (percentage of request) above target
+  Normal  SuccessfulRescale  72s    horizontal-pod-autoscaler  New size: 2; reason: All metrics below target</pre>
+<h3>6.6 Nó: Capacity, Allocatable e Allocated resources</h3>
+<p><b>Capacity</b> é o total de recursos físicos que o nó informa ter: aqui 12 CPUs e 8104720Ki (~7,7 GiB) de memória, que é o que o WSL 2 entrega para a VM do Docker Desktop, e no máximo 110 pods. <b>Allocatable</b> é quanto desse total o scheduler pode realmente distribuir para pods, ou seja, a capacidade menos o que fica reservado para o sistema operacional, o kubelet e o limite de despejo (eviction). Aqui sobram 8002320Ki de memória: ~100 MiB ficaram reservados. <b>Allocated resources</b> é a soma das <i>requests</i> e <i>limits</i> de todos os pods que estão no nó, em relação ao Allocatable. No momento do print, as requests somavam 1450m de CPU (12%) e 1272Mi de memória (16%). O scheduler só coloca um pod novo se a <i>request</i> dele couber no que falta (Allocatable − requests alocadas). Os <i>limits</i> podem passar de 100% (overcommit), como o próprio describe avisa, porque nem todo pod usa o limite ao mesmo tempo.</p>
+
+<h2 class="pagina">7. Bônus</h2>
+<h3>7.1 Build multi-stage</h3>
+<p>O Dockerfile tem dois estágios. O <code>deps</code> roda <code>npm ci --omit=dev</code>, e o <code>runtime</code> parte de outra <code>node:22-alpine</code> limpa e copia só a pasta <code>node_modules</code> pronta e o código. Cache do npm, manifestos intermediários e ferramentas de build não chegam à imagem final, que ficou com 63,3 MB (tamanho do conteúdo).</p>
+<h3>7.2 Canary</h3>
+<p>No canary, a versão nova vai primeiro para uma parte pequena dos usuários. Se der problema, só essa fatia é afetada, e voltar atrás é só apagar o canary. Implementei com um <b>segundo Deployment</b>, <code>loja-api-canary</code> (<code>k8s-extras/canary.yaml</code>), com a imagem 3.0, 1 réplica e os labels <code>app: loja-api, track: canary</code>. Como o Service seleciona só <code>app: loja-api</code>, ele passou a ter 3 endpoints (2 stable + 1 canary), e cerca de 1/3 do tráfego foi para a 3.0. O label <code>track</code> separa os dois Deployments, para que um não "adote" os pods do outro.</p>
+<pre>[2026-11-20 10:41:07] PS&gt; kubectl apply -f k8s-extras/canary.yaml
+deployment.apps/loja-api-canary created</pre>
+<pre>[2026-11-20 10:41:14] PS&gt; kubectl get pods -n n3-guilherme -l app=loja-api -L track
+NAME                               READY   STATUS    RESTARTS   AGE     TRACK
+loja-api-58446f7f66-tjpq7          1/1     Running   0          9m10s   stable
+loja-api-58446f7f66-x795q          1/1     Running   0          6m42s   stable
+loja-api-canary-7986fb4845-986rs   1/1     Running   0          7s      canary</pre>
+<pre>[2026-11-20 10:41:14] PS&gt; kubectl get endpointslices -n n3-guilherme -l kubernetes.io/service-name=loja-api
+NAME             ADDRESSTYPE   PORTS   ENDPOINTS                       AGE
+loja-api-bfzc7   IPv4          3000    10.1.0.18,10.1.0.23,10.1.0.30   13m</pre>
+<pre>[2026-11-20 10:41:24] PS&gt; 1..90 | ForEach-Object { (curl.exe -s http://localhost:30080/health | ConvertFrom-Json).versao } | Group-Object | ForEach-Object { "versao $($_.Name): $($_.Count) de 90 requisicoes" }
+versao 2.0: 65 de 90 requisicoes
+versao 3.0: 25 de 90 requisicoes</pre>
+<pre>[2026-11-20 10:41:24] PS&gt; curl.exe -s -i http://localhost:30080/ | Select-String "X-App-Version|X-Pod|versao"
+X-App-Version: 3.0
+X-Pod: loja-api-canary-7986fb4845-986rs
+{"app":"loja-api","versao":"3.0","mensagem":"Versao CANARY da Loja","pod":"loja-api-canary-7986fb4845-986rs","visitas":5,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}</pre>
+<p>Medição: 25 de 90 requisições (28%) foram atendidas pela 3.0, perto do 1/3 esperado. A diferença vem do balanceamento aleatório do kube-proxy. Com o canary saudável, <b>promovi</b> a versão: <code>set image</code> da 3.0 no Deployment principal e remoção do canary. Ao final, 30 de 30 requisições na 3.0.</p>
+<pre>[2026-11-20 10:41:32] PS&gt; kubectl set image deployment/loja-api api=loja-api:3.0 -n n3-guilherme
+deployment.apps/loja-api image updated</pre>
+<pre>[2026-11-20 10:41:48] PS&gt; kubectl delete -f k8s-extras/canary.yaml
+deployment.apps "loja-api-canary" deleted from n3-guilherme namespace</pre>
+<pre>[2026-11-20 10:41:56] PS&gt; 1..30 | ForEach-Object { (curl.exe -s http://localhost:30080/health | ConvertFrom-Json).versao } | Group-Object | ForEach-Object { "versao $($_.Name): $($_.Count) de 30 requisicoes" }
+versao 3.0: 30 de 30 requisicoes</pre>
+<h3>7.3 Ingress (segundo ponto de entrada)</h3>
+<p><b>Justificativa:</b> o NodePort expõe uma porta alta (30080) em todos os nós e exige um Service exposto para cada aplicação. O <b>Ingress</b> concentra a entrada HTTP na porta 80 e roteia por <b>nome de host</b> e <b>caminho</b> para Services internos. É onde, em produção, ficariam o HTTPS (certificado TLS), os redirecionamentos e várias aplicações atrás de um único IP. Instalei o controlador <b>ingress-nginx</b> pelo manifesto oficial (no Docker Desktop o Service LoadBalancer dele recebe <code>localhost</code>) e criei o Ingress <code>loja-api</code> para o host <code>loja.localhost</code> (<code>k8s-extras/ingress.yaml</code>).</p>
+<pre>[2026-11-20 10:38:06] PS&gt; kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
+namespace/ingress-nginx created
+serviceaccount/ingress-nginx created
+serviceaccount/ingress-nginx-admission created
+... (16 linhas omitidas; saída completa em evidencias/bonus.txt)</pre>
+<pre>[2026-11-20 10:38:48] PS&gt; kubectl get svc -n ingress-nginx
+NAME                                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+ingress-nginx-controller             LoadBalancer   10.108.139.98   localhost     80:30716/TCP,443:31065/TCP   42s
+ingress-nginx-controller-admission   ClusterIP      10.97.44.204    &lt;none&gt;        443/TCP                      42s</pre>
+<pre>[2026-11-20 10:38:54] PS&gt; kubectl apply -f k8s-extras/ingress.yaml
+ingress.networking.k8s.io/loja-api created</pre>
+<pre>[2026-11-20 10:41:57] PS&gt; kubectl get ingress -n n3-guilherme
+NAME       CLASS   HOSTS            ADDRESS     PORTS   AGE
+loja-api   nginx   loja.localhost   localhost   80      3m3s</pre>
+<pre>[2026-11-20 10:39:14] PS&gt; curl.exe -s -H "Host: loja.localhost" http://localhost/
+{"app":"loja-api","versao":"2.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-58446f7f66-tjpq7","visitas":4,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}</pre>
+<pre>[2026-11-20 10:39:14] PS&gt; curl.exe -s http://loja.localhost/health
+{"status":"ok","versao":"2.0","uptime_s":421}</pre>
+<pre>[2026-11-20 10:39:14] PS&gt; curl.exe -s -o NUL -w "%{http_code}" -H "Host: outro.localhost" http://localhost/
+404</pre>
+<p>Com o cabeçalho <code>Host: loja.localhost</code>, ou acessando <code>http://loja.localhost</code> direto, a requisição chega na API pela porta 80. Um host que não está nas regras recebe <b>404</b> do próprio NGINX. Observação: o projeto ingress-nginx foi descontinuado pela comunidade Kubernetes em 2026. Para produção eu usaria outro controlador (Traefik, NGINX Gateway Fabric) ou a <b>Gateway API</b>, mas o conceito de Ingress é o mesmo.</p>
+
+<h2 class="pagina">8. Respostas</h2>
+
+<div class="pergunta">
+<h3>1. Qual a diferença entre imagem e container? O que faz cada instrução do seu Dockerfile?</h3>
+<p>A <b>imagem</b> é o pacote pronto e somente-leitura: sistema base, Node, dependências, meu código e as instruções de como iniciar. É como uma "receita congelada", identificada por nome e tag (<code>loja-api:1.0</code>). O <b>container</b> é uma imagem em execução: um processo isolado com uma camada gravável por cima da imagem, rede e nome próprios. Da mesma imagem eu criei vários containers ao mesmo tempo (no Compose e nos pods do Kubernetes). Apagar o container não apaga a imagem.</p>
+<table>
+<tr><th style="width:38%">Instrução</th><th>O que faz no meu Dockerfile</th></tr>
+<tr><td><code>FROM node:22-alpine AS deps</code></td><td>Primeiro estágio, só para instalar dependências. Alpine é a variante enxuta do Node (~50 MB).</td></tr>
+<tr><td><code>WORKDIR /app</code></td><td>Cria e entra na pasta <code>/app</code>. Os comandos seguintes rodam nela.</td></tr>
+<tr><td><code>COPY package.json package-lock.json ./</code></td><td>Copia só os manifestos primeiro. Se eu mudar o código e não as dependências, o Docker reaproveita o cache da camada do <code>npm ci</code>.</td></tr>
+<tr><td><code>RUN npm ci --omit=dev &amp;&amp; npm cache clean --force</code></td><td>Instala exatamente as versões do lock, sem as dependências de desenvolvimento, e limpa o cache do npm.</td></tr>
+<tr><td><code>FROM node:22-alpine AS runtime</code></td><td>Segundo estágio: começa de uma imagem limpa, que é a que vai para produção.</td></tr>
+<tr><td><code>ARG APP_VERSION=1.0</code></td><td>Parâmetro de build (<code>--build-arg APP_VERSION=2.0</code>). Foi assim que gerei a 2.0 e a 3.0 com mudança visível.</td></tr>
+<tr><td><code>ENV NODE_ENV=production PORT=3000 APP_VERSION=…</code></td><td>Variáveis de ambiente padrão do container. A API lê a porta e a versão delas.</td></tr>
+<tr><td><code>LABEL …</code></td><td>Metadados (título e versão) gravados na imagem.</td></tr>
+<tr><td><code>COPY --from=deps --chown=node:node /app/node_modules ./node_modules</code></td><td>Traz do primeiro estágio só a pasta de dependências pronta, já com dono <code>node</code>.</td></tr>
+<tr><td><code>COPY --chown=node:node package.json ./</code> e <code>COPY … src ./src</code></td><td>Copia o código da API. O <code>.dockerignore</code> impede que <code>node_modules</code>, <code>.env</code> e os testes entrem no contexto.</td></tr>
+<tr><td><code>USER node</code></td><td>Daqui em diante tudo roda como usuário sem privilégio. Se a API for invadida, o atacante não é root no container.</td></tr>
+<tr><td><code>EXPOSE 3000</code></td><td>Documenta a porta. Quem publica de fato é o <code>-p</code>, o <code>ports:</code> do Compose ou o Service.</td></tr>
+<tr><td><code>HEALTHCHECK … node -e "fetch(…/health)"</code></td><td>O Docker testa a saúde a cada 10 s usando o próprio Node, sem instalar curl. É o "(healthy)" do <code>docker ps</code>.</td></tr>
+<tr><td><code>CMD ["node", "src/server.js"]</code></td><td>Comando de inicialização na forma JSON (exec): o Node recebe o SIGTERM direto e faz o desligamento gracioso.</td></tr>
+</table>
+</div>
+
+<div class="pergunta">
+<h3>2. O Compose usa depends_on e healthcheck. Como o Kubernetes resolve o problema de "esperar o banco ficar pronto"?</h3>
+<p>O Kubernetes não tem <code>depends_on</code>: ele sobe tudo ao mesmo tempo e trabalha com <b>reconciliação</b>, ou seja, fica tentando até o estado real ficar igual ao desejado. Quem espera o banco são as próprias peças:</p>
+<ul>
+<li><b>readinessProbe:</b> minha API só é considerada "pronta" quando <code>/ready</code> devolve 200, o que só acontece quando MySQL e Redis respondem. Enquanto não está pronta, o Service não manda tráfego para ela. Isso aparece nos eventos como <code>Readiness probe failed: … 503</code> logo no início.</li>
+<li><b>initContainer:</b> coloquei o <code>espera-mysql</code> (busybox com <code>nc -z mysql 3306</code> em loop). O container da API nem inicia antes de a porta do banco abrir. O log mostrou "aguardando mysql..." três vezes e depois "mysql respondeu".</li>
+<li><b>Reinício automático:</b> se a API morrer por falta do banco, o kubelet reinicia o container com espera crescente (CrashLoopBackOff), até dar certo.</li>
+<li><b>A aplicação é tolerante:</b> o <code>db.js</code> tenta conectar 30 vezes com 2 s de intervalo, e o Redis reconecta sozinho.</li>
+</ul>
+<p>No MySQL também usei readinessProbe (<code>mysqladmin ping</code> com o usuário da aplicação), então o Service <code>mysql</code> só aponta para o pod quando ele já aceita login.</p>
+</div>
+
+<div class="pergunta">
+<h3>3. O que são requests e limits? Justifique os valores que você escolheu.</h3>
+<p><b>Request</b> é quanto de CPU e memória o container tem <b>garantido</b>. O scheduler usa esse valor para escolher um nó com espaço e reserva o recurso. Também é a base do percentual do HPA. <b>Limit</b> é o <b>teto</b>: se a CPU passar do limit, o container é estrangulado (throttling, fica mais lento); se a memória passar do limit, o container é morto (<code>OOMKilled</code>). Com request menor que limit o pod fica na classe QoS <i>Burstable</i>.</p>
+<table>
+<tr><th>Container</th><th>Requests</th><th>Limits</th><th>Justificativa (com base no <code>kubectl top</code>)</th></tr>
+<tr><td>API</td><td>100m / 128Mi</td><td>400m / 256Mi</td><td>Parada, ela usa 1–10m de CPU e ~22–25Mi de RAM. 100m de request é pouco para o nó e dá ao HPA uma base clara: 50% = 50m por pod. O limit de 400m deixa a API absorver picos sem tomar o nó todo: no início da carga, com 2 pods, a média chegou a ~311m por pod, abaixo do teto. 128Mi/256Mi dão folga de 5–10x para o heap do Node e os buffers do Express. Comecei com 96Mi/192Mi no YAML e aumentei com <code>kubectl set resources</code> na Parte 4.</td></tr>
+<tr><td>MySQL</td><td>250m / 512Mi</td><td>1 CPU / 1Gi</td><td>O MySQL 8 usou ~431Mi mesmo parado (buffer pool do InnoDB). Uma request de 512Mi garante esse mínimo, e o limit de 1Gi evita OOM em consultas maiores.</td></tr>
+<tr><td>Redis</td><td>50m / 64Mi</td><td>200m / 128Mi</td><td>Usou 3–7m e 3–4Mi, porque só guarda uma lista pequena e um contador.</td></tr>
+<tr><td>initContainer e busybox</td><td>10–20m / 16Mi</td><td>50–100m / 32Mi</td><td>Só rodam <code>nc</code>/<code>wget</code>.</td></tr>
+</table>
+</div>
+
+<div class="pergunta">
+<h3>4. Explique Deployment, ReplicaSet e Service. Como o Service encontra os pods?</h3>
+<p>O <b>Deployment</b> é onde eu declaro o estado desejado da aplicação: qual imagem, quantas réplicas e como atualizar. Ele não cria pods diretamente: cria um <b>ReplicaSet</b> para cada versão do template. O ReplicaSet tem um único trabalho, que é manter N pods iguais rodando, recriando qualquer um que morra (foi o que aconteceu quando apaguei o pod do MySQL). No rolling update o Deployment cria um ReplicaSet novo (ex.: <code>loja-api-5fbd9554c</code> para a 2.0) e vai aumentando ele enquanto diminui o antigo. Os ReplicaSets antigos ficam com 0 réplicas e são o que permite o <code>rollout undo</code>.</p>
+<p>O <b>Service</b> dá um endereço fixo (IP virtual + nome DNS <code>loja-api</code>) para um conjunto de pods que nascem e morrem com IPs diferentes, e balanceia o tráfego entre eles. Ele encontra os pods por <b>labels</b>: o <code>selector</code> do Service (<code>app: loja-api</code>) é comparado com os labels de todos os pods do namespace. Os pods que batem <b>e estão Ready</b> entram nos <b>EndpointSlices</b> (no print: <code>10.1.0.9,10.1.0.10</code>), e o kube-proxy direciona o tráfego para esses IPs. Por isso, no canary, bastou criar pods com o mesmo <code>app: loja-api</code> para eles começarem a receber parte das requisições.</p>
+</div>
+
+<div class="pergunta">
+<h3>5. Por que base64 não é segurança? Onde deveriam ficar senhas de verdade em produção?</h3>
+<p>Base64 é só uma <b>codificação</b>, não uma criptografia: não tem chave e qualquer um reverte. <code>dHJvcXVlLWxvamEtMTIz</code>, do meu Secret, vira <code>troque-loja-123</code> com um comando (<code>[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String("..."))</code> ou <code>base64 -d</code>). Ele existe para guardar bytes arbitrários em YAML/JSON. Quem tem acesso ao arquivo no Git, ou permissão de <code>kubectl get secret -o yaml</code>, tem a senha. Por isso no repositório só há senhas de exemplo de laboratório.</p>
+<p>Em produção as senhas deveriam ficar num <b>cofre de segredos</b>: HashiCorp Vault, AWS Secrets Manager, Azure Key Vault ou GCP Secret Manager, sincronizados com o cluster pelo <i>External Secrets Operator</i> ou pelo <i>Secrets Store CSI Driver</i>. Outra opção é <b>Sealed Secrets</b>, em que o Git guarda o segredo criptografado com uma chave que só o cluster tem. No cluster, também é preciso ativar a <b>criptografia do etcd em repouso</b>, restringir via <b>RBAC</b> quem pode ler Secrets e trocar as senhas periodicamente. Nunca senha em texto ou base64 dentro do repositório.</p>
+</div>
+
+<div class="pergunta">
+<h3>6. Explique o seu HPA: o que são mínimo, máximo e o percentual de CPU, e o que aconteceu no seu teste.</h3>
+<p>O <b>HorizontalPodAutoscaler</b> ajusta sozinho o número de réplicas do Deployment conforme uma métrica. Criei com <code>kubectl autoscale deployment loja-api --min=2 --max=6 --cpu=50%</code>:</p>
+<ul>
+<li><b>Mínimo (2):</b> nunca fica com menos de 2 pods, mesmo sem uso. Assim continua havendo redundância se um pod cair.</li>
+<li><b>Máximo (6):</b> teto para a escala não consumir o nó inteiro (nem a conta da nuvem, num caso real).</li>
+<li><b>50% de CPU:</b> é a média de uso <b>em relação à request</b> de CPU dos pods. Com request de 100m, o alvo é 50m por pod. A cada 15 s o HPA calcula <code>réplicas desejadas = réplicas atuais × (uso atual ÷ alvo)</code>, arredondando para cima. Por isso o HPA só funciona com requests definidas e com o metrics-server instalado.</li>
+</ul>
+<p><b>O que aconteceu no meu teste</b> (seção 5.4):</p>
+<ol>
+<li><b>Antes</b> (10:32–10:34): 1% de CPU e 2 réplicas. No começo apareceu <code>&lt;unknown&gt;</code> até o metrics-server coletar a primeira amostra.</li>
+<li><b>Durante</b>: às 10:34:09 liguei o <code>gerador-carga</code> (3 pods busybox fazendo <code>wget</code> em loop em <code>http://loja-api/carga?ms=50</code>, ou seja, pelo DNS interno do Service). A média foi a <b>311%</b>. A conta deu 2 × 311/50 ≈ 12,4 réplicas, mas o máximo é 6, então o HPA escalou direto para <b>6</b>. O <code>describe hpa</code> mostra <code>New size: 6; reason: cpu … above target</code> e a condição <code>ScalingLimited … TooManyReplicas</code>. Com 6 pods cada um ficou com ~170–270m (<code>kubectl top pods</code>), e a média ficou em ~210%, ainda acima de 50%. A escala ficou presa no máximo, o que mostra que para essa carga 6 réplicas ainda seriam poucas.</li>
+<li><b>Depois</b>: às 10:38:11 apaguei o gerador. Quando a métrica atualizou, o uso caiu para 1–2%. Depois da janela de estabilização (reduzi de 300 s para 60 s com o patch <code>hpa-behavior-patch.json</code>, só para a demonstração), o HPA voltou para <b>2</b> réplicas (o mínimo): <code>New size: 2; reason: All metrics below target</code>.</li>
+</ol>
+<p>Notei também que a subida é rápida e a descida é lenta de propósito: a janela de estabilização evita que o número de pods fique "pulando" quando a carga oscila.</p>
+</div>
+
+<div class="pergunta">
+<h3>7. Quando o rollout undo é útil? Relate a falha proposital que você fez e como a diagnosticou.</h3>
+<p>O <code>rollout undo</code> serve para <b>voltar rápido para a última versão que funcionava</b> quando uma atualização dá errado: imagem inexistente, bug que derruba a aplicação, configuração errada, probes falhando. Ele não precisa de build nem de alterar YAML: o Deployment reativa o ReplicaSet anterior, que ainda está guardado (<code>revisionHistoryLimit: 10</code>). Também dá para escolher a revisão com <code>--to-revision=N</code>.</p>
+<p><b>Minha falha:</b> com a API na 2.0, rodei <code>kubectl set image deployment/loja-api api=loja-api:9.9-nao-existe</code>. O <code>rollout status</code> não terminou (<code>timed out waiting for the condition</code>), e o <code>get pods</code> mostrou um pod novo <code>0/1 ImagePullBackOff</code> ao lado dos 2 pods antigos ainda <code>Running</code>. No <code>kubectl describe pod</code> fui direto na seção <b>Events</b>, que mostrou <code>Pulling image "loja-api:9.9-nao-existe"</code> → <code>Failed to pull image … pull access denied for loja-api, repository does not exist</code> → <code>ErrImagePull</code> → <code>Back-off pulling image</code>. Ou seja, a tag não existe localmente nem no Docker Hub. O <code>kubectl get events --field-selector type=Warning</code> confirmou. Graças ao <code>maxUnavailable: 0</code> o usuário não percebeu nada: <code>/health</code> continuou respondendo <code>versao 2.0</code>. Rodei <code>kubectl rollout undo deployment/loja-api</code>, o pod quebrado foi removido, e o histórico mostrou a revisão 2 (a 2.0) reaparecendo como revisão 4.</p>
+</div>
+
+<div class="pergunta">
+<h3>8. Que limitações a sua solução tem? O que você melhoraria para produção?</h3>
+<ul>
+<li><b>Banco com uma réplica só:</b> o MySQL é um Deployment com 1 pod e estratégia Recreate. Se o pod cair, o banco fica fora até o novo subir (~15 s no teste). Não dá para escalar para várias réplicas, porque todas escreveriam no mesmo volume e corromperiam os dados. Para produção eu usaria um <b>banco gerenciado</b> (RDS, Cloud SQL) ou um <b>StatefulSet com operador</b> (MySQL Operator, Percona) com replicação primário/réplica.</li>
+<li><b>Volume local:</b> o PVC usa o <code>hostpath</code> do Docker Desktop, ou seja, o disco de um único nó. Se o nó morrer, os dados vão junto. Precisaria de storage de rede (EBS, Azure Disk) e <b>backups</b> automáticos com teste de restauração.</li>
+<li><b>Segredos no Git:</b> mesmo de exemplo, o Secret está no repositório. Em produção: Vault, External Secrets ou Sealed Secrets (ver resposta 5).</li>
+<li><b>Imagens só locais:</b> o cluster usa as imagens do Docker da máquina (<code>imagePullPolicy: IfNotPresent</code>). Em produção eu publicaria num <b>registry</b> (Docker Hub, GHCR, ECR) com tags imutáveis e um <b>pipeline de CI/CD</b> (GitHub Actions) para testar, construir, escanear vulnerabilidades e fazer deploy.</li>
+<li><b>Cluster de um nó:</b> todas as réplicas ficam na mesma máquina, então réplicas não protegem contra falha do nó. Precisaria de vários nós, <code>podAntiAffinity</code>/<code>topologySpreadConstraints</code> e um <b>PodDisruptionBudget</b>.</li>
+<li><b>Exposição:</b> NodePort sem HTTPS. O caminho é o Ingress (bônus) com TLS via cert-manager, mais <b>NetworkPolicies</b> para que só a API fale com o MySQL e o Redis.</li>
+<li><b>Redis sem persistência no Kubernetes</b> (no Compose tem AOF): como é cache, aceitei perder o contador de visitas. Para dado importante, usaria um volume ou Redis gerenciado.</li>
+<li><b>Observabilidade:</b> só tenho <code>kubectl logs</code> e <code>top</code>. Adicionaria Prometheus + Grafana, logs centralizados e alertas. O HPA também poderia escalar por requisições por segundo, e não só por CPU.</li>
+<li><b>Governança do namespace:</b> <code>ResourceQuota</code> e <code>LimitRange</code> para impedir que alguém crie pods sem requests e limits.</li>
+</ul>
+</div>
+
+<h2>9. Conclusão</h2>
+<p>A mesma imagem passou pelos três ambientes (<code>docker run</code>, Compose e Kubernetes), mudando só a forma de injetar a configuração. O que mais aprendi foi a diferença entre "o container iniciou" e "o serviço está pronto", que no Compose se resolve com healthcheck + depends_on e no Kubernetes com readiness/liveness, initContainer e a reconciliação contínua. Também vi na prática como o Deployment protege a disponibilidade: atualização sem nenhum erro, imagem quebrada sem afetar o usuário e volta com um comando.</p>
+</body>
+</html>
