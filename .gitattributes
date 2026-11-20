@@ -1,0 +1,4 @@
+# Mantém finais de linha LF no repositório (scripts e YAML rodam em Linux).
+* text=auto eol=lf
+*.pdf binary
+*.png binary

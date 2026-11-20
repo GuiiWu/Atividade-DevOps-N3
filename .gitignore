@@ -1,0 +1,15 @@
+# Dependências e logs
+node_modules/
+npm-debug.log*
+
+# Variáveis de ambiente reais (só o .env.example vai para o Git)
+.env
+
+# Enunciado da atividade (material do professor)
+Atividade_N3.pdf
+
+# Arquivos de sistema/editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
