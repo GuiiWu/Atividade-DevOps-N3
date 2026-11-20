@@ -1,0 +1,118 @@
+# API da Loja: Deployment (2 réplicas) + Service NodePort.
+#
+# Labels e selectors:
+#   - todos os pods da API têm  app: loja-api
+#   - os pods "oficiais" têm também  track: stable  (os do canary têm track: canary)
+#   - o Deployment seleciona  app=loja-api,track=stable  (só gerencia os seus)
+#   - o Service seleciona só  app=loja-api  (manda tráfego para stable E canary)
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: loja-api
+  namespace: n3-guilherme
+  labels:
+    app: loja-api
+  annotations:
+    # Texto que aparece na coluna CHANGE-CAUSE do "kubectl rollout history".
+    kubernetes.io/change-cause: "versao inicial 1.0 (kubectl apply -f k8s/)"
+spec:
+  replicas: 2
+  revisionHistoryLimit: 10
+  # Atualização sem derrubar: sobe 1 pod novo a mais (maxSurge) e nunca
+  # deixa ficar com menos pods prontos do que o desejado (maxUnavailable: 0).
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  selector:
+    matchLabels:
+      app: loja-api
+      track: stable
+  template:
+    metadata:
+      labels:
+        app: loja-api
+        track: stable
+    spec:
+      terminationGracePeriodSeconds: 30
+      # initContainer: roda ANTES da API e só termina quando a porta do MySQL
+      # responde. É uma das formas do Kubernetes de "esperar o banco".
+      initContainers:
+        - name: espera-mysql
+          image: busybox:1.36
+          command: ["sh", "-c", "until nc -z -w 2 mysql 3306; do echo 'aguardando mysql...'; sleep 2; done; echo 'mysql respondeu'"]
+          resources:
+            requests: { cpu: 10m, memory: 16Mi }
+            limits: { cpu: 50m, memory: 32Mi }
+      containers:
+        - name: api
+          image: loja-api:1.0
+          # Imagem construída localmente: o Kubernetes do Docker Desktop
+          # (kubeadm) enxerga as imagens do Docker local. IfNotPresent evita
+          # tentar baixar do Docker Hub uma imagem que já está no nó.
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+              name: http
+          # Configurações não sensíveis: todas as chaves do ConfigMap.
+          envFrom:
+            - configMapRef:
+                name: loja-api-config
+          # Senha: só a chave necessária, vinda do Secret.
+          env:
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: loja-db-secret, key: MYSQL_PASSWORD }
+          # requests = o que o scheduler RESERVA no nó (e base do % do HPA).
+          # limits   = teto: acima da CPU o container é estrangulado
+          #            (throttling); acima da memória é morto (OOMKilled).
+          resources:
+            requests:
+              cpu: 100m
+              memory: 96Mi
+            limits:
+              cpu: 500m
+              memory: 192Mi
+          # Readiness: só recebe tráfego quando MySQL e Redis respondem.
+          readinessProbe:
+            httpGet:
+              path: /ready
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 5
+            failureThreshold: 3
+          # Liveness: se o processo travar, o kubelet reinicia o container.
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 3
+          # Dá tempo do Service tirar o pod da lista antes de ele parar,
+          # para nenhuma requisição cair durante o rolling update.
+          lifecycle:
+            preStop:
+              exec:
+                command: ["sleep", "5"]
+---
+# NodePort: expõe a API fora do cluster na porta 30080 de cada nó.
+# No Docker Desktop: http://localhost:30080
+apiVersion: v1
+kind: Service
+metadata:
+  name: loja-api
+  namespace: n3-guilherme
+  labels:
+    app: loja-api
+spec:
+  type: NodePort
+  selector:
+    app: loja-api
+  ports:
+    - name: http
+      port: 80            # porta do Service dentro do cluster (http://loja-api)
+      targetPort: http    # porta 3000 do container (pelo nome)
+      nodePort: 30080     # porta aberta no nó

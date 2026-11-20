@@ -1,0 +1,10 @@
+# Namespace próprio do aluno: isola todos os recursos da atividade.
+# O prefixo 00- garante que ele é criado primeiro no "kubectl apply -f k8s/"
+# (o kubectl aplica os arquivos da pasta em ordem alfabética).
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: n3-guilherme
+  labels:
+    atividade: n3
+    aluno: guilherme-bastian

@@ -1,0 +1,112 @@
+# MySQL: PVC + Deployment + Service.
+#
+# Por que Deployment (e não StatefulSet)? Aqui só existe UMA instância do
+# banco. Um Deployment com 1 réplica, estratégia Recreate e um PVC resolve:
+# o pod pode morrer e voltar que os dados continuam no volume.
+# StatefulSet seria o caminho para várias réplicas (cada uma com seu próprio
+# volume e nome fixo: mysql-0, mysql-1...), o que exige replicação do MySQL.
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+  namespace: n3-guilherme
+  labels:
+    app: mysql
+spec:
+  # ReadWriteOnce: o volume é montado por um nó por vez (suficiente para 1 pod).
+  accessModes: ["ReadWriteOnce"]
+  # Sem storageClassName = usa a StorageClass padrão do cluster
+  # (no Docker Desktop é a "hostpath", que provisiona o volume sozinha).
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+  namespace: n3-guilherme
+  labels:
+    app: mysql
+spec:
+  replicas: 1
+  # Recreate: mata o pod antigo ANTES de criar o novo. Com RollingUpdate
+  # existiriam dois MySQL disputando o mesmo volume ao mesmo tempo.
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app: mysql
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - name: mysql
+          image: mysql:8.4
+          ports:
+            - containerPort: 3306
+              name: mysql
+          env:
+            # Na primeira inicialização (volume vazio) o MySQL cria o banco
+            # "loja" e o usuário "loja" com a senha do Secret.
+            - name: MYSQL_DATABASE
+              valueFrom:
+                configMapKeyRef: { name: loja-api-config, key: DB_NAME }
+            - name: MYSQL_USER
+              valueFrom:
+                configMapKeyRef: { name: loja-api-config, key: DB_USER }
+            - name: MYSQL_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: loja-db-secret, key: MYSQL_PASSWORD }
+            - name: MYSQL_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef: { name: loja-db-secret, key: MYSQL_ROOT_PASSWORD }
+          volumeMounts:
+            - name: dados
+              mountPath: /var/lib/mysql
+          resources:
+            requests:
+              cpu: 250m
+              memory: 512Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          # Pronto = aceita login com o usuário da aplicação.
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "mysqladmin ping -h 127.0.0.1 -u\"$MYSQL_USER\" -p\"$MYSQL_PASSWORD\" --silent"]
+            initialDelaySeconds: 15
+            periodSeconds: 5
+            timeoutSeconds: 5
+          # Vivo = a porta 3306 está aberta. Tempo inicial alto porque a
+          # primeira inicialização do MySQL (criar arquivos) é demorada.
+          livenessProbe:
+            tcpSocket:
+              port: 3306
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            failureThreshold: 6
+      volumes:
+        - name: dados
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+---
+# Service ClusterIP: o MySQL só é acessível de dentro do cluster, pelo nome
+# DNS "mysql" (ou mysql.n3-guilherme.svc.cluster.local).
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+  namespace: n3-guilherme
+  labels:
+    app: mysql
+spec:
+  type: ClusterIP
+  selector:
+    app: mysql
+  ports:
+    - port: 3306
+      targetPort: mysql
