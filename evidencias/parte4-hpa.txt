@@ -1,0 +1,156 @@
+﻿Fotos a cada 15 s de: kubectl get hpa loja-api -n n3-guilherme
+COLUNAS: NAME REFERENCE TARGETS(uso/alvo) MINPODS MAXPODS REPLICAS AGE
+[10:32:53] ANTES    loja-api   Deployment/loja-api   cpu: <unknown>/50%   2     6     0     0s
+[10:33:08] ANTES    loja-api   Deployment/loja-api   cpu: <unknown>/50%   2     6     0     15s
+[10:33:23] ANTES    loja-api   Deployment/loja-api   cpu: <unknown>/50%   2     6     0     30s
+[10:33:38] ANTES    loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     45s
+[10:33:53] ANTES    loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     60s
+[2026-11-20 10:34:09] PS> kubectl get hpa -n n3-guilherme
+NAME       REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+loja-api   Deployment/loja-api   cpu: 1%/50%   2         6         2          76s
+
+[2026-11-20 10:34:09] PS> kubectl top pods -n n3-guilherme
+NAME                        CPU(cores)   MEMORY(bytes)   
+loja-api-58446f7f66-td6sx   1m           25Mi            
+loja-api-58446f7f66-tjpq7   1m           25Mi            
+mysql-6cc88c9f9c-9pgj9      11m          432Mi           
+redis-5d78967f89-hnzjf      6m           4Mi
+
+[2026-11-20 10:34:09] PS> kubectl apply -f k8s-extras/gerador-carga.yaml
+deployment.apps/gerador-carga created
+
+[10:34:09] DURANTE  loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     76s
+[10:34:24] DURANTE  loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     91s
+[10:34:39] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     106s
+[10:34:54] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m1s
+[10:35:09] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m16s
+[10:35:25] DURANTE  loja-api   Deployment/loja-api   cpu: 311%/50%   2     6     2     2m32s
+[10:35:40] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     2m47s
+[10:35:55] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m2s
+[10:36:10] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m17s
+[10:36:25] DURANTE  loja-api   Deployment/loja-api   cpu: 207%/50%   2     6     6     3m32s
+[10:36:40] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     3m47s
+[2026-11-20 10:36:55] PS> kubectl top pods -n n3-guilherme
+NAME                             CPU(cores)   MEMORY(bytes)   
+gerador-carga-6fd557bc6f-mq4l9   25m          2Mi             
+gerador-carga-6fd557bc6f-vvq24   22m          1Mi             
+gerador-carga-6fd557bc6f-xfk2q   25m          1Mi             
+loja-api-58446f7f66-j7q8c        189m         39Mi            
+loja-api-58446f7f66-jdh2p        205m         39Mi            
+loja-api-58446f7f66-lnc4s        267m         38Mi            
+loja-api-58446f7f66-td6sx        221m         33Mi            
+loja-api-58446f7f66-tjpq7        211m         37Mi            
+loja-api-58446f7f66-x795q        168m         37Mi            
+mysql-6cc88c9f9c-9pgj9           13m          432Mi           
+redis-5d78967f89-hnzjf           7m           3Mi
+
+[2026-11-20 10:36:55] PS> kubectl get pods -n n3-guilherme -l app=loja-api
+NAME                        READY   STATUS    RESTARTS   AGE
+loja-api-58446f7f66-j7q8c   1/1     Running   0          2m23s
+loja-api-58446f7f66-jdh2p   1/1     Running   0          2m23s
+loja-api-58446f7f66-lnc4s   1/1     Running   0          2m23s
+loja-api-58446f7f66-td6sx   1/1     Running   0          4m44s
+loja-api-58446f7f66-tjpq7   1/1     Running   0          4m51s
+loja-api-58446f7f66-x795q   1/1     Running   0          2m23s
+
+[10:36:55] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m2s
+[10:37:11] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m18s
+[10:37:26] DURANTE  loja-api   Deployment/loja-api   cpu: 214%/50%   2     6     6     4m33s
+[10:37:41] DURANTE  loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     4m48s
+[10:37:56] DURANTE  loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m3s
+[2026-11-20 10:38:11] PS> kubectl describe hpa loja-api -n n3-guilherme
+Name:                                                  loja-api
+Namespace:                                             n3-guilherme
+Labels:                                                <none>
+Annotations:                                           <none>
+CreationTimestamp:                                     Fri, 20 Nov 2026 10:32:53 -0400
+Reference:                                             Deployment/loja-api
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  208% (208m) / 50%
+Min replicas:                                          2
+Max replicas:                                          6
+Behavior:
+  Scale Up:
+    Stabilization Window: 0 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Pods     Value: 4    Period: 15 seconds
+      - Type: Percent  Value: 100  Period: 15 seconds
+  Scale Down:
+    Stabilization Window: 60 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Percent  Value: 100  Period: 15 seconds
+Deployment pods:       6 current / 6 desired
+Conditions:
+  Type            Status  Reason            Message
+  ----            ------  ------            -------
+  AbleToScale     True    ReadyForNewScale  recommended size matches current size
+  ScalingActive   True    ValidMetricFound  the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  True    TooManyReplicas   the desired replica count is more than the maximum replica count
+Events:
+  Type    Reason             Age    From                       Message
+  ----    ------             ----   ----                       -------
+  Normal  SuccessfulRescale  3m39s  horizontal-pod-autoscaler  New size: 6; reason: cpu resource utilization (percentage of request) above target
+
+[2026-11-20 10:38:11] PS> kubectl delete -f k8s-extras/gerador-carga.yaml
+deployment.apps "gerador-carga" deleted from n3-guilherme namespace
+
+[10:38:11] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m18s
+[10:38:27] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m34s
+[10:38:42] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     5m49s
+[10:38:57] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     6m4s
+[10:39:12] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     6m19s
+[10:39:28] DEPOIS   loja-api   Deployment/loja-api   cpu: 208%/50%   2     6     6     6m35s
+[10:39:43] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     6m50s
+[10:39:58] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     7m5s
+[10:40:13] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     7m20s
+[10:40:29] DEPOIS   loja-api   Deployment/loja-api   cpu: 2%/50%   2     6     6     7m36s
+[10:40:44] DEPOIS   loja-api   Deployment/loja-api   cpu: 1%/50%   2     6     2     7m51s
+[2026-11-20 10:40:44] PS> kubectl get hpa -n n3-guilherme
+NAME       REFERENCE             TARGETS       MINPODS   MAXPODS   REPLICAS   AGE
+loja-api   Deployment/loja-api   cpu: 1%/50%   2         6         2          7m51s
+
+[2026-11-20 10:40:44] PS> kubectl top pods -n n3-guilherme
+NAME                        CPU(cores)   MEMORY(bytes)   
+loja-api-58446f7f66-tjpq7   1m           37Mi            
+loja-api-58446f7f66-x795q   4m           24Mi            
+mysql-6cc88c9f9c-9pgj9      11m          432Mi           
+redis-5d78967f89-hnzjf      6m           4Mi
+
+[2026-11-20 10:40:44] PS> kubectl describe hpa loja-api -n n3-guilherme
+Name:                                                  loja-api
+Namespace:                                             n3-guilherme
+Labels:                                                <none>
+Annotations:                                           <none>
+CreationTimestamp:                                     Fri, 20 Nov 2026 10:32:53 -0400
+Reference:                                             Deployment/loja-api
+Metrics:                                               ( current / target )
+  resource cpu on pods  (as a percentage of request):  1% (1m) / 50%
+Min replicas:                                          2
+Max replicas:                                          6
+Behavior:
+  Scale Up:
+    Stabilization Window: 0 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Pods     Value: 4    Period: 15 seconds
+      - Type: Percent  Value: 100  Period: 15 seconds
+  Scale Down:
+    Stabilization Window: 60 seconds
+    Select Policy: Max
+    Policies:
+      - Type: Percent  Value: 100  Period: 15 seconds
+Deployment pods:       2 current / 2 desired
+Conditions:
+  Type            Status  Reason            Message
+  ----            ------  ------            -------
+  AbleToScale     True    ReadyForNewScale  recommended size matches current size
+  ScalingActive   True    ValidMetricFound  the HPA was able to successfully calculate a replica count from cpu resource utilization (percentage of request)
+  ScalingLimited  True    TooFewReplicas    the desired replica count is less than the minimum replica count
+Events:
+  Type    Reason             Age    From                       Message
+  ----    ------             ----   ----                       -------
+  Normal  SuccessfulRescale  6m12s  horizontal-pod-autoscaler  New size: 6; reason: cpu resource utilization (percentage of request) above target
+  Normal  SuccessfulRescale  72s    horizontal-pod-autoscaler  New size: 2; reason: All metrics below target
+

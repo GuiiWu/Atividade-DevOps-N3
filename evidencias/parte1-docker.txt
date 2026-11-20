@@ -1,0 +1,127 @@
+﻿[2026-11-20 10:21:06] PS> docker build -t loja-api:1.0 --build-arg APP_VERSION=1.0 ./app
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.16kB done
+#1 DONE 0.0s
+
+#2 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#2 DONE 0.3s
+
+#3 docker-image://docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+#3 resolve docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183 0.0s done
+#3 CACHED
+
+#4 [internal] load metadata for docker.io/library/node:22-alpine
+#4 DONE 0.3s
+
+#5 [internal] load .dockerignore
+#5 transferring context: 284B done
+#5 DONE 0.0s
+
+#6 [internal] load build context
+#6 transferring context: 252B done
+#6 DONE 0.0s
+
+#7 [deps 1/4] FROM docker.io/library/node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
+#7 resolve docker.io/library/node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a 0.0s done
+#7 DONE 0.0s
+
+#8 [runtime 3/5] COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+#8 CACHED
+
+#9 [deps 2/4] WORKDIR /app
+#9 CACHED
+
+#10 [deps 3/4] COPY package.json package-lock.json ./
+#10 CACHED
+
+#11 [runtime 4/5] COPY --chown=node:node package.json ./
+#11 CACHED
+
+#12 [deps 4/4] RUN npm ci --omit=dev && npm cache clean --force
+#12 CACHED
+
+#13 [runtime 5/5] COPY --chown=node:node src ./src
+#13 CACHED
+
+#14 exporting to image
+#14 exporting layers done
+#14 exporting manifest sha256:7d23d0d5ba6275d1d4010938417846dece3d70748fef4415297146329d2952f2 done
+#14 exporting config sha256:a721f736f2ac4ed7c841cc2987e30005d29d531dc7798ac4c234772d873b3e7f done
+#14 exporting attestation manifest sha256:a31932a4574b380f7a3b186b7e8fee29839a642c032c2cc36336867c852a1d4d 0.0s done
+#14 exporting manifest list sha256:187147bc8e95f069925825ea2dafc2c615909257b3106aaaf0dfaafce93b4075 0.0s done
+#14 naming to docker.io/library/loja-api:1.0 done
+#14 unpacking to docker.io/library/loja-api:1.0 done
+#14 DONE 0.1s
+
+[2026-11-20 10:21:06] PS> docker images loja-api
+IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA
+loja-api:1.0   187147bc8e95        256MB         63.3MB
+
+[2026-11-20 10:21:07] PS> docker history loja-api:1.0 --format "table {{.CreatedBy}}\t{{.Size}}"
+CREATED BY                                      SIZE
+CMD ["node" "src/server.js"]                    0B
+HEALTHCHECK {Test:[CMD-SHELL node -e "fetch(…   0B
+EXPOSE 3000/tcp                                 0B
+USER node                                       0B
+COPY --chown=node:node src ./src # buildkit     36.9kB
+COPY --chown=node:node package.json ./ # bui…   12.3kB
+COPY --chown=node:node /app/node_modules ./n…   15MB
+WORKDIR /app                                    8.19kB
+LABEL org.opencontainers.image.title=loja-ap…   0B
+ENV NODE_ENV=production PORT=3000 APP_VERSIO…   0B
+ARG APP_VERSION=1.0                             0B
+CMD ["node"]                                    0B
+ENTRYPOINT ["docker-entrypoint.sh"]             0B
+COPY docker-entrypoint.sh /usr/local/bin/ # …   20.5kB
+RUN /bin/sh -c apk add --no-cache --virtual …   5.48MB
+ENV YARN_VERSION=1.22.22                        0B
+RUN /bin/sh -c addgroup -g 1000 node     && …   163MB
+ENV NODE_VERSION=22.23.5                        0B
+CMD ["/bin/sh"]                                 0B
+ADD alpine-minirootfs-3.24.4-x86_64.tar.gz /…   9.09MB
+
+[2026-11-20 10:21:07] PS> docker run --rm loja-api:1.0 whoami
+node
+
+[2026-11-20 10:21:08] PS> docker run -d --name loja-teste -p 3001:3000 loja-api:1.0
+e3e28314cdcf76d7e6bdbbffdab179993f39594f86b14027a64db808d9ed714d
+
+[2026-11-20 10:21:12] PS> curl.exe -s -i http://localhost:3001/health
+HTTP/1.1 200 OK
+X-Powered-By: Express
+X-App-Version: 1.0
+X-Pod: e3e28314cdcf
+Content-Type: application/json; charset=utf-8
+Content-Length: 43
+ETag: W/"2b-SmY2k2CEMKv0Cqi7HE+K7hhotX4"
+Date: Fri, 20 Nov 2026 14:21:12 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"status":"ok","versao":"1.0","uptime_s":4}
+
+[2026-11-20 10:21:12] PS> curl.exe -s -i -m 10 http://localhost:3001/ready
+HTTP/1.1 503 Service Unavailable
+X-Powered-By: Express
+X-App-Version: 1.0
+X-Pod: e3e28314cdcf
+Content-Type: application/json; charset=utf-8
+Content-Length: 50
+ETag: W/"32-MyOIPz7qBDuZsIpYL4h+6CqIJKQ"
+Date: Fri, 20 Nov 2026 14:21:12 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+
+{"pronto":false,"mysql":"falhou","redis":"falhou"}
+
+[2026-11-20 10:21:12] PS> docker logs loja-teste
+[api] loja-api 1.0 ouvindo na porta 3000
+[redis] indisponível: ECONNREFUSED
+[db] banco indisponível (tentativa 1/30): ECONNREFUSED
+[db] banco indisponível (tentativa 2/30): ECONNREFUSED
+
+[2026-11-20 10:21:13] PS> docker rm -f loja-teste
+loja-teste
+

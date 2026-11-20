@@ -1,0 +1,117 @@
+﻿[2026-11-20 10:23:06] PS> docker compose up -d
+ Network loja_loja Creating 
+ Volume loja_mysql_data Creating 
+ Volume loja_mysql_data Creating 
+ Network loja_loja Creating 
+ Volume loja_redis_data Creating 
+ Volume loja_redis_data Creating 
+ Volume loja_redis_data Created 
+ Volume loja_redis_data Created 
+ Volume loja_mysql_data Created 
+ Volume loja_mysql_data Created 
+ Network loja_loja Created 
+ Network loja_loja Created 
+ Container loja-redis Creating 
+ Container loja-mysql Creating 
+ Container loja-mysql Created 
+ Container loja-redis Created 
+ Container loja-api Creating 
+ Container loja-api Created 
+ Container loja-mysql Starting 
+ Container loja-redis Starting 
+ Container loja-mysql Started 
+ Container loja-mysql Waiting 
+ Container loja-redis Started 
+ Container loja-redis Waiting 
+ Container loja-redis Healthy 
+ Container loja-mysql Healthy 
+ Container loja-api Starting 
+ Container loja-api Started
+
+[2026-11-20 10:23:07] PS> docker compose ps
+NAME         IMAGE            COMMAND                  SERVICE   CREATED          STATUS                                     PORTS
+loja-api     loja-api:1.0     "docker-entrypoint.s…"   api       17 seconds ago   Up Less than a second (health: starting)   0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+loja-mysql   mysql:8.4        "docker-entrypoint.s…"   mysql     17 seconds ago   Up 16 seconds (healthy)                    3306/tcp, 33060/tcp
+loja-redis   redis:7-alpine   "docker-entrypoint.s…"   redis     17 seconds ago   Up 16 seconds (healthy)                    6379/tcp
+
+[2026-11-20 10:23:07] PS> docker volume ls --filter name=loja
+DRIVER    VOLUME NAME
+local     loja_mysql_data
+local     loja_redis_data
+
+[2026-11-20 10:23:12] PS> curl.exe -s http://localhost:3000/
+{"app":"loja-api","versao":"1.0","mensagem":"Bem-vindo à Loja","pod":"415d62b70371","visitas":1,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+
+[2026-11-20 10:23:12] PS> curl.exe -s http://localhost:3000/ready
+{"pronto":true,"mysql":"ok","redis":"ok"}
+
+[2026-11-20 10:23:12] PS> curl.exe -s http://localhost:3000/produtos
+{"origem":"mysql","produtos":[{"id":1,"nome":"Teclado","preco":"149.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":2,"nome":"Mouse","preco":"79.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":3,"nome":"Monitor","preco":"899.00","criado_em":"2026-11-20T14:23:07.000Z"}]}
+
+[2026-11-20 10:23:12] PS> curl.exe -s http://localhost:3000/produtos
+{"origem":"cache","produtos":[{"id":1,"nome":"Teclado","preco":"149.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":2,"nome":"Mouse","preco":"79.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":3,"nome":"Monitor","preco":"899.00","criado_em":"2026-11-20T14:23:07.000Z"}]}
+
+[2026-11-20 10:23:12] PS> Invoke-RestMethod -Method Post -Uri http://localhost:3000/produtos -ContentType "application/json; charset=utf-8" -Body '{"nome":"Produto do Guilherme (Compose)","preco":42.5}' | ConvertTo-Json -Compress
+{"id":4,"nome":"Produto do Guilherme (Compose)","preco":"42.50","criado_em":"2026-11-20T14:23:12.000Z"}
+
+[2026-11-20 10:23:12] PS> curl.exe -s http://localhost:3000/produtos
+{"origem":"mysql","produtos":[{"id":1,"nome":"Teclado","preco":"149.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":2,"nome":"Mouse","preco":"79.90","criado_em":"2026-11-20T14:23:07.000Z"},{"id":3,"nome":"Monitor","preco":"899.00","criado_em":"2026-11-20T14:23:07.000Z"},{"id":4,"nome":"Produto do Guilherme (Compose)","preco":"42.50","criado_em":"2026-11-20T14:23:12.000Z"}]}
+
+[2026-11-20 10:23:20] PS> docker compose down
+ Container loja-api Stopping 
+ Container loja-api Stopped 
+ Container loja-api Removing 
+ Container loja-api Removed 
+ Container loja-redis Stopping 
+ Container loja-mysql Stopping 
+ Container loja-redis Stopped 
+ Container loja-redis Removing 
+ Container loja-redis Removed 
+ Container loja-mysql Stopped 
+ Container loja-mysql Removing 
+ Container loja-mysql Removed 
+ Network loja_loja Removing 
+ Network loja_loja Removed
+
+[2026-11-20 10:23:21] PS> docker compose ps -a
+NAME      IMAGE     COMMAND   SERVICE   CREATED   STATUS    PORTS
+
+[2026-11-20 10:23:21] PS> docker volume ls --filter name=loja
+DRIVER    VOLUME NAME
+local     loja_mysql_data
+local     loja_redis_data
+
+[2026-11-20 10:23:28] PS> docker compose up -d
+ Network loja_loja Creating 
+ Network loja_loja Creating 
+ Network loja_loja Created 
+ Network loja_loja Created 
+ Container loja-mysql Creating 
+ Container loja-redis Creating 
+ Container loja-mysql Created 
+ Container loja-redis Created 
+ Container loja-api Creating 
+ Container loja-api Created 
+ Container loja-mysql Starting 
+ Container loja-redis Starting 
+ Container loja-redis Started 
+ Container loja-redis Waiting 
+ Container loja-mysql Started 
+ Container loja-mysql Waiting 
+ Container loja-redis Healthy 
+ Container loja-mysql Healthy 
+ Container loja-api Starting 
+ Container loja-api Started
+
+[2026-11-20 10:23:36] PS> docker compose ps
+NAME         IMAGE            COMMAND                  SERVICE   CREATED          STATUS                    PORTS
+loja-api     loja-api:1.0     "docker-entrypoint.s…"   api       15 seconds ago   Up 8 seconds (healthy)    0.0.0.0:3000->3000/tcp, [::]:3000->3000/tcp
+loja-mysql   mysql:8.4        "docker-entrypoint.s…"   mysql     15 seconds ago   Up 14 seconds (healthy)   3306/tcp, 33060/tcp
+loja-redis   redis:7-alpine   "docker-entrypoint.s…"   redis     15 seconds ago   Up 14 seconds (healthy)   6379/tcp
+
+[2026-11-20 10:23:36] PS> curl.exe -s http://localhost:3000/produtos/4
+{"id":4,"nome":"Produto do Guilherme (Compose)","preco":"42.50","criado_em":"2026-11-20T14:23:12.000Z"}
+
+[2026-11-20 10:23:36] PS> curl.exe -s http://localhost:3000/
+{"app":"loja-api","versao":"1.0","mensagem":"Bem-vindo à Loja","pod":"160fff18364b","visitas":2,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+

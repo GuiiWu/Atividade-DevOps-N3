@@ -1,0 +1,174 @@
+﻿[2026-11-20 10:36:44] PS> docker build -t loja-api:3.0 --build-arg APP_VERSION=3.0 ./app
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.16kB 0.0s done
+#1 DONE 0.0s
+
+#2 [auth] docker/dockerfile:pull token for registry-1.docker.io
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 1.2s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+#4 resolve docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/node:22-alpine
+#5 ...
+
+#6 [auth] library/node:pull token for registry-1.docker.io
+#6 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/library/node:22-alpine
+#5 DONE 0.8s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 284B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 252B done
+#8 DONE 0.0s
+
+#9 [deps 1/4] FROM docker.io/library/node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
+#9 resolve docker.io/library/node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a 0.0s done
+#9 DONE 0.0s
+
+#10 [deps 2/4] WORKDIR /app
+#10 CACHED
+
+#11 [deps 3/4] COPY package.json package-lock.json ./
+#11 CACHED
+
+#12 [deps 4/4] RUN npm ci --omit=dev && npm cache clean --force
+#12 CACHED
+
+#13 [runtime 3/5] COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+#13 CACHED
+
+#14 [runtime 4/5] COPY --chown=node:node package.json ./
+#14 CACHED
+
+#15 [runtime 5/5] COPY --chown=node:node src ./src
+#15 CACHED
+
+#16 exporting to image
+#16 exporting layers done
+#16 exporting manifest sha256:e25b66fed3a7d63739ecc5ecb91a79decc284e4af189bb5f001732e7b659c7ee 0.0s done
+#16 exporting config sha256:2dfead77ab11f5166d7d4ac7ae85b315b11a46d93593df88674e8b60e25a8df4 0.0s done
+#16 exporting attestation manifest sha256:b040683f717f4f326276f6f7bec4713a0cde69bd6a11c6d6f61d28afab5fa293 0.0s done
+#16 exporting manifest list sha256:283d8b3326d515953bb5acc3c1e687538c3c563cad2c2e1346e4ef35bacca49d
+#16 exporting manifest list sha256:283d8b3326d515953bb5acc3c1e687538c3c563cad2c2e1346e4ef35bacca49d 0.0s done
+#16 naming to docker.io/library/loja-api:3.0 done
+#16 unpacking to docker.io/library/loja-api:3.0 done
+#16 DONE 0.2s
+
+[2026-11-20 10:36:44] PS> docker images loja-api
+IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA
+loja-api:1.0   6413ffad5a7a        256MB         63.3MB        
+loja-api:2.0   6460a0f8a3bc        256MB         63.3MB   U    
+loja-api:3.0   283d8b3326d5        256MB         63.3MB
+
+[2026-11-20 10:38:06] PS> kubectl apply -f https://raw.githubusercontent.com/kubernetes/ingress-nginx/controller-v1.12.1/deploy/static/provider/cloud/deploy.yaml
+namespace/ingress-nginx created
+serviceaccount/ingress-nginx created
+serviceaccount/ingress-nginx-admission created
+role.rbac.authorization.k8s.io/ingress-nginx created
+role.rbac.authorization.k8s.io/ingress-nginx-admission created
+clusterrole.rbac.authorization.k8s.io/ingress-nginx created
+clusterrole.rbac.authorization.k8s.io/ingress-nginx-admission created
+rolebinding.rbac.authorization.k8s.io/ingress-nginx created
+rolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx created
+clusterrolebinding.rbac.authorization.k8s.io/ingress-nginx-admission created
+configmap/ingress-nginx-controller created
+service/ingress-nginx-controller created
+service/ingress-nginx-controller-admission created
+deployment.apps/ingress-nginx-controller created
+job.batch/ingress-nginx-admission-create created
+job.batch/ingress-nginx-admission-patch created
+ingressclass.networking.k8s.io/nginx created
+validatingwebhookconfiguration.admissionregistration.k8s.io/ingress-nginx-admission created
+
+[2026-11-20 10:38:48] PS> kubectl wait --namespace ingress-nginx --for=condition=Ready pod --selector=app.kubernetes.io/component=controller --timeout=240s
+pod/ingress-nginx-controller-6c47c5c5cc-sjtxk condition met
+
+[2026-11-20 10:38:48] PS> kubectl get svc -n ingress-nginx
+NAME                                 TYPE           CLUSTER-IP      EXTERNAL-IP   PORT(S)                      AGE
+ingress-nginx-controller             LoadBalancer   10.108.139.98   localhost     80:30716/TCP,443:31065/TCP   42s
+ingress-nginx-controller-admission   ClusterIP      10.97.44.204    <none>        443/TCP                      42s
+
+[2026-11-20 10:38:54] PS> kubectl apply -f k8s-extras/ingress.yaml
+ingress.networking.k8s.io/loja-api created
+
+[2026-11-20 10:39:14] PS> kubectl get ingress -n n3-guilherme
+NAME       CLASS   HOSTS            ADDRESS   PORTS   AGE
+loja-api   nginx   loja.localhost             80      20s
+
+[2026-11-20 10:39:14] PS> curl.exe -s -H "Host: loja.localhost" http://localhost/
+{"app":"loja-api","versao":"2.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-58446f7f66-tjpq7","visitas":4,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+
+[2026-11-20 10:39:14] PS> curl.exe -s http://loja.localhost/health
+{"status":"ok","versao":"2.0","uptime_s":421}
+
+[2026-11-20 10:39:14] PS> curl.exe -s -o NUL -w "%{http_code}" -H "Host: outro.localhost" http://localhost/
+404
+
+[2026-11-20 10:41:07] PS> kubectl apply -f k8s-extras/canary.yaml
+deployment.apps/loja-api-canary created
+
+[2026-11-20 10:41:13] PS> kubectl rollout status deployment/loja-api-canary -n n3-guilherme --timeout=120s
+Waiting for deployment "loja-api-canary" rollout to finish: 0 of 1 updated replicas are available...
+deployment "loja-api-canary" successfully rolled out
+
+[2026-11-20 10:41:14] PS> kubectl get pods -n n3-guilherme -l app=loja-api -L track
+NAME                               READY   STATUS    RESTARTS   AGE     TRACK
+loja-api-58446f7f66-tjpq7          1/1     Running   0          9m10s   stable
+loja-api-58446f7f66-x795q          1/1     Running   0          6m42s   stable
+loja-api-canary-7986fb4845-986rs   1/1     Running   0          7s      canary
+
+[2026-11-20 10:41:14] PS> kubectl get endpointslices -n n3-guilherme -l kubernetes.io/service-name=loja-api
+NAME             ADDRESSTYPE   PORTS   ENDPOINTS                       AGE
+loja-api-bfzc7   IPv4          3000    10.1.0.18,10.1.0.23,10.1.0.30   13m
+
+[2026-11-20 10:41:24] PS> 1..90 | ForEach-Object { (curl.exe -s http://localhost:30080/health | ConvertFrom-Json).versao } | Group-Object | ForEach-Object { "versao $($_.Name): $($_.Count) de 90 requisicoes" }
+versao 2.0: 65 de 90 requisicoes
+versao 3.0: 25 de 90 requisicoes
+
+[2026-11-20 10:41:24] PS> curl.exe -s -i http://localhost:30080/ | Select-String "X-App-Version|X-Pod|versao"
+X-App-Version: 3.0
+X-Pod: loja-api-canary-7986fb4845-986rs
+{"app":"loja-api","versao":"3.0","mensagem":"Versao CANARY da Loja","pod":"loja-api-canary-7986fb4845-986rs","visitas":5,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+
+[2026-11-20 10:41:32] PS> kubectl set image deployment/loja-api api=loja-api:3.0 -n n3-guilherme
+deployment.apps/loja-api image updated
+
+[2026-11-20 10:41:33] PS> kubectl annotate deployment/loja-api -n n3-guilherme kubernetes.io/change-cause="promove canary: 3.0 para todos" --overwrite
+deployment.apps/loja-api annotated
+
+[2026-11-20 10:41:48] PS> kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=180s
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+deployment "loja-api" successfully rolled out
+
+[2026-11-20 10:41:48] PS> kubectl delete -f k8s-extras/canary.yaml
+deployment.apps "loja-api-canary" deleted from n3-guilherme namespace
+
+[2026-11-20 10:41:56] PS> kubectl get pods -n n3-guilherme -l app=loja-api -L track
+NAME                        READY   STATUS    RESTARTS   AGE   TRACK
+loja-api-57968f59f9-mgt95   1/1     Running   0          16s   stable
+loja-api-57968f59f9-q5xdg   1/1     Running   0          24s   stable
+
+[2026-11-20 10:41:56] PS> 1..30 | ForEach-Object { (curl.exe -s http://localhost:30080/health | ConvertFrom-Json).versao } | Group-Object | ForEach-Object { "versao $($_.Name): $($_.Count) de 30 requisicoes" }
+versao 3.0: 30 de 30 requisicoes
+
+[2026-11-20 10:41:57] PS> kubectl get ingress -n n3-guilherme
+NAME       CLASS   HOSTS            ADDRESS     PORTS   AGE
+loja-api   nginx   loja.localhost   localhost   80      3m3s
+

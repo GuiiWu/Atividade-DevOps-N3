@@ -1,0 +1,9 @@
+NAME       REFERENCE             TARGETS              MINPODS   MAXPODS   REPLICAS   AGE
+loja-api   Deployment/loja-api   cpu: <unknown>/50%   2         6         0          0s
+loja-api   Deployment/loja-api   cpu: 1%/50%          2         6         2          39s
+loja-api   Deployment/loja-api   cpu: 311%/50%        2         6         2          99s
+loja-api   Deployment/loja-api   cpu: 207%/50%        2         6         6          2m39s
+loja-api   Deployment/loja-api   cpu: 214%/50%        2         6         6          3m39s
+loja-api   Deployment/loja-api   cpu: 208%/50%        2         6         6          4m39s
+loja-api   Deployment/loja-api   cpu: 2%/50%          2         6         6          6m39s
+loja-api   Deployment/loja-api   cpu: 1%/50%          2         6         2          7m39s

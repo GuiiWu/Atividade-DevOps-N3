@@ -1,0 +1,84 @@
+﻿[2026-11-20 10:32:58] PS> kubectl describe node docker-desktop
+Name:               docker-desktop
+Roles:              control-plane
+Labels:             beta.kubernetes.io/arch=amd64
+                    beta.kubernetes.io/os=linux
+                    kubernetes.io/arch=amd64
+                    kubernetes.io/hostname=docker-desktop
+                    kubernetes.io/os=linux
+                    node-role.kubernetes.io/control-plane=
+                    node.kubernetes.io/exclude-from-external-load-balancers=
+Annotations:        node.alpha.kubernetes.io/ttl: 0
+                    volumes.kubernetes.io/controller-managed-attach-detach: true
+CreationTimestamp:  Fri, 20 Nov 2026 10:25:46 -0400
+Taints:             <none>
+Unschedulable:      false
+Lease:
+  HolderIdentity:  docker-desktop
+  AcquireTime:     <unset>
+  RenewTime:       Fri, 20 Nov 2026 10:32:48 -0400
+Conditions:
+  Type             Status  LastHeartbeatTime                 LastTransitionTime                Reason                       Message
+  ----             ------  -----------------                 ------------------                ------                       -------
+  MemoryPressure   False   Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:46 -0400   KubeletHasSufficientMemory   kubelet has sufficient memory available
+  DiskPressure     False   Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:46 -0400   KubeletHasNoDiskPressure     kubelet has no disk pressure
+  PIDPressure      False   Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:46 -0400   KubeletHasSufficientPID      kubelet has sufficient PID available
+  Ready            True    Fri, 20 Nov 2026 10:32:54 -0400   Fri, 20 Nov 2026 10:25:47 -0400   KubeletReady                 kubelet is posting ready status
+Addresses:
+  InternalIP:  192.168.65.3
+  Hostname:    docker-desktop
+Capacity:
+  cpu:                12
+  ephemeral-storage:  1055762868Ki
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  memory:             8104720Ki
+  pods:               110
+Allocatable:
+  cpu:                12
+  ephemeral-storage:  972991057538
+  hugepages-1Gi:      0
+  hugepages-2Mi:      0
+  memory:             8002320Ki
+  pods:               110
+System Info:
+  Machine ID:                 935e4f6634bf45fe976d9f71e15898d2
+  System UUID:                935e4f6634bf45fe976d9f71e15898d2
+  Boot ID:                    b135e68e-2af2-4575-91b2-5fb2c1d5233d
+  Kernel Version:             6.18.58.1-microsoft-standard-WSL2
+  OS Image:                   Docker Desktop
+  Operating System:           linux
+  Architecture:               amd64
+  Container Runtime Version:  docker://29.9.3
+  Kubelet Version:            v1.36.1
+Non-terminated Pods:          (14 in total)
+  Namespace                   Name                                      CPU Requests  CPU Limits  Memory Requests  Memory Limits  Age
+  ---------                   ----                                      ------------  ----------  ---------------  -------------  ---
+  kube-system                 coredns-589f44dc88-blkpf                  100m (0%)     0 (0%)      70Mi (0%)        170Mi (2%)     7m4s
+  kube-system                 coredns-589f44dc88-nvltv                  100m (0%)     0 (0%)      70Mi (0%)        170Mi (2%)     7m4s
+  kube-system                 etcd-docker-desktop                       100m (0%)     0 (0%)      100Mi (1%)       0 (0%)         7m11s
+  kube-system                 kube-apiserver-docker-desktop             250m (2%)     0 (0%)      0 (0%)           0 (0%)         7m11s
+  kube-system                 kube-controller-manager-docker-desktop    200m (1%)     0 (0%)      0 (0%)           0 (0%)         7m11s
+  kube-system                 kube-proxy-5jpbx                          0 (0%)        0 (0%)      0 (0%)           0 (0%)         7m4s
+  kube-system                 kube-scheduler-docker-desktop             100m (0%)     0 (0%)      0 (0%)           0 (0%)         7m11s
+  kube-system                 metrics-server-5c48d6699f-plvrk           100m (0%)     0 (0%)      200Mi (2%)       0 (0%)         5m36s
+  kube-system                 storage-provisioner                       0 (0%)        0 (0%)      0 (0%)           0 (0%)         7m2s
+  kube-system                 vpnkit-controller                         0 (0%)        0 (0%)      0 (0%)           0 (0%)         7m2s
+  n3-guilherme                loja-api-58446f7f66-td6sx                 100m (0%)     400m (3%)   128Mi (1%)       256Mi (3%)     47s
+  n3-guilherme                loja-api-58446f7f66-tjpq7                 100m (0%)     400m (3%)   128Mi (1%)       256Mi (3%)     54s
+  n3-guilherme                mysql-6cc88c9f9c-9pgj9                    250m (2%)     1 (8%)      512Mi (6%)       1Gi (13%)      4m25s
+  n3-guilherme                redis-5d78967f89-hnzjf                    50m (0%)      200m (1%)   64Mi (0%)        128Mi (1%)     5m8s
+Allocated resources:
+  (Total limits may be over 100 percent, i.e., overcommitted.)
+  Resource           Requests      Limits
+  --------           --------      ------
+  cpu                1450m (12%)   2 (16%)
+  memory             1272Mi (16%)  2004Mi (25%)
+  ephemeral-storage  0 (0%)        0 (0%)
+  hugepages-1Gi      0 (0%)        0 (0%)
+  hugepages-2Mi      0 (0%)        0 (0%)
+Events:
+  Type    Reason          Age   From             Message
+  ----    ------          ----  ----             -------
+  Normal  RegisteredNode  7m5s  node-controller  Node docker-desktop event: Registered Node docker-desktop in Controller
+

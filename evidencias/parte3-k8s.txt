@@ -1,0 +1,127 @@
+﻿[2026-11-20 10:27:09] PS> kubectl version
+Client Version: v1.36.1
+Kustomize Version: v5.8.1
+Server Version: v1.36.1
+
+[2026-11-20 10:27:09] PS> kubectl get nodes -o wide
+NAME             STATUS   ROLES           AGE   VERSION   INTERNAL-IP    EXTERNAL-IP   OS-IMAGE         KERNEL-VERSION                              CONTAINER-RUNTIME
+docker-desktop   Ready    control-plane   83s   v1.36.1   192.168.65.3   <none>        Docker Desktop   6.18.58.1-microsoft-standard-WSL2 (amd64)   docker://29.9.3
+
+[2026-11-20 10:27:50] PS> kubectl apply -f k8s/
+namespace/n3-guilherme created
+configmap/loja-api-config created
+secret/loja-db-secret created
+persistentvolumeclaim/mysql-pvc created
+deployment.apps/mysql created
+service/mysql created
+deployment.apps/redis created
+service/redis created
+deployment.apps/loja-api created
+service/loja-api created
+
+[2026-11-20 10:28:07] PS> kubectl rollout status deployment/mysql -n n3-guilherme --timeout=300s
+Waiting for deployment "mysql" rollout to finish: 0 of 1 updated replicas are available...
+deployment "mysql" successfully rolled out
+
+[2026-11-20 10:28:14] PS> kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=300s
+Waiting for deployment "loja-api" rollout to finish: 0 of 2 updated replicas are available...
+Waiting for deployment "loja-api" rollout to finish: 1 of 2 updated replicas are available...
+deployment "loja-api" successfully rolled out
+
+[2026-11-20 10:28:15] PS> kubectl get all -n n3-guilherme -o wide
+NAME                            READY   STATUS    RESTARTS   AGE   IP          NODE             NOMINATED NODE   READINESS GATES
+pod/loja-api-659d7966f6-6npv8   1/1     Running   0          25s   10.1.0.10   docker-desktop   <none>           <none>
+pod/loja-api-659d7966f6-wlrg4   1/1     Running   0          25s   10.1.0.9    docker-desktop   <none>           <none>
+pod/mysql-6cc88c9f9c-v8m9z      1/1     Running   0          25s   10.1.0.8    docker-desktop   <none>           <none>
+pod/redis-5d78967f89-hnzjf      1/1     Running   0          25s   10.1.0.11   docker-desktop   <none>           <none>
+
+NAME               TYPE        CLUSTER-IP       EXTERNAL-IP   PORT(S)        AGE   SELECTOR
+service/loja-api   NodePort    10.102.166.7     <none>        80:30080/TCP   25s   app=loja-api
+service/mysql      ClusterIP   10.99.16.20      <none>        3306/TCP       25s   app=mysql
+service/redis      ClusterIP   10.104.138.214   <none>        6379/TCP       25s   app=redis
+
+NAME                       READY   UP-TO-DATE   AVAILABLE   AGE   CONTAINERS   IMAGES           SELECTOR
+deployment.apps/loja-api   2/2     2            2           25s   api          loja-api:1.0     app=loja-api,track=stable
+deployment.apps/mysql      1/1     1            1           25s   mysql        mysql:8.4        app=mysql
+deployment.apps/redis      1/1     1            1           25s   redis        redis:7-alpine   app=redis
+
+NAME                                  DESIRED   CURRENT   READY   AGE   CONTAINERS   IMAGES           SELECTOR
+replicaset.apps/loja-api-659d7966f6   2         2         2       25s   api          loja-api:1.0     app=loja-api,pod-template-hash=659d7966f6,track=stable
+replicaset.apps/mysql-6cc88c9f9c      1         1         1       25s   mysql        mysql:8.4        app=mysql,pod-template-hash=6cc88c9f9c
+replicaset.apps/redis-5d78967f89      1         1         1       25s   redis        redis:7-alpine   app=redis,pod-template-hash=5d78967f89
+
+[2026-11-20 10:28:24] PS> kubectl get pvc,configmap,secret -n n3-guilherme
+NAME                              STATUS   VOLUME                                     CAPACITY   ACCESS MODES   STORAGECLASS   VOLUMEATTRIBUTESCLASS   AGE
+persistentvolumeclaim/mysql-pvc   Bound    pvc-7e862ea2-8320-41ec-a7c9-117b844d5d4c   1Gi        RWO            hostpath       <unset>                 34s
+
+NAME                         DATA   AGE
+configmap/kube-root-ca.crt   1      34s
+configmap/loja-api-config    9      34s
+
+NAME                    TYPE     DATA   AGE
+secret/loja-db-secret   Opaque   2      34s
+
+[2026-11-20 10:28:25] PS> kubectl get endpointslices -n n3-guilherme
+NAME             ADDRESSTYPE   PORTS   ENDPOINTS            AGE
+loja-api-bfzc7   IPv4          3000    10.1.0.9,10.1.0.10   35s
+mysql-gjqc4      IPv4          3306    10.1.0.8             35s
+redis-72ckf      IPv4          6379    10.1.0.11            35s
+
+[2026-11-20 10:28:25] PS> kubectl get pods -n n3-guilherme --show-labels
+NAME                        READY   STATUS    RESTARTS   AGE   LABELS
+loja-api-659d7966f6-6npv8   1/1     Running   0          35s   app=loja-api,pod-template-hash=659d7966f6,track=stable
+loja-api-659d7966f6-wlrg4   1/1     Running   0          35s   app=loja-api,pod-template-hash=659d7966f6,track=stable
+mysql-6cc88c9f9c-v8m9z      1/1     Running   0          35s   app=mysql,pod-template-hash=6cc88c9f9c
+redis-5d78967f89-hnzjf      1/1     Running   0          35s   app=redis,pod-template-hash=5d78967f89
+
+[2026-11-20 10:28:25] PS> kubectl logs loja-api-659d7966f6-6npv8 -n n3-guilherme -c espera-mysql
+aguardando mysql...
+aguardando mysql...
+aguardando mysql...
+mysql respondeu
+
+[2026-11-20 10:28:25] PS> kubectl logs loja-api-659d7966f6-6npv8 -n n3-guilherme -c api
+[api] loja-api 1.0 ouvindo na porta 3000
+[redis] conectado
+[db] banco pronto (tentativa 1)
+
+[2026-11-20 10:28:25] PS> curl.exe -s http://localhost:30080/
+{"app":"loja-api","versao":"1.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-659d7966f6-wlrg4","visitas":1,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+
+[2026-11-20 10:28:25] PS> curl.exe -s http://localhost:30080/
+{"app":"loja-api","versao":"1.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-659d7966f6-6npv8","visitas":2,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+
+[2026-11-20 10:28:25] PS> curl.exe -s http://localhost:30080/ready
+{"pronto":true,"mysql":"ok","redis":"ok"}
+
+[2026-11-20 10:28:25] PS> Invoke-RestMethod -Method Post -Uri http://localhost:30080/produtos -ContentType "application/json; charset=utf-8" -Body '{"nome":"Produto do Guilherme (Kubernetes)","preco":99.9}' | ConvertTo-Json -Compress
+{"id":4,"nome":"Produto do Guilherme (Kubernetes)","preco":"99.90","criado_em":"2026-11-20T14:28:25.000Z"}
+
+[2026-11-20 10:28:25] PS> curl.exe -s http://localhost:30080/produtos
+{"origem":"mysql","produtos":[{"id":1,"nome":"Teclado","preco":"149.90","criado_em":"2026-11-20T14:28:10.000Z"},{"id":2,"nome":"Mouse","preco":"79.90","criado_em":"2026-11-20T14:28:10.000Z"},{"id":3,"nome":"Monitor","preco":"899.00","criado_em":"2026-11-20T14:28:10.000Z"},{"id":4,"nome":"Produto do Guilherme (Kubernetes)","preco":"99.90","criado_em":"2026-11-20T14:28:25.000Z"}]}
+
+[2026-11-20 10:28:33] PS> kubectl get pods -n n3-guilherme -l app=mysql
+NAME                     READY   STATUS    RESTARTS   AGE
+mysql-6cc88c9f9c-v8m9z   1/1     Running   0          43s
+
+[2026-11-20 10:28:37] PS> kubectl delete pod -n n3-guilherme -l app=mysql
+pod "mysql-6cc88c9f9c-v8m9z" deleted from n3-guilherme namespace
+
+[2026-11-20 10:28:50] PS> kubectl wait --for=condition=Ready pod -l app=mysql -n n3-guilherme --timeout=180s
+pod/mysql-6cc88c9f9c-9pgj9 condition met
+
+[2026-11-20 10:28:50] PS> kubectl get pods -n n3-guilherme -l app=mysql
+NAME                     READY   STATUS    RESTARTS   AGE
+mysql-6cc88c9f9c-9pgj9   1/1     Running   0          17s
+
+[2026-11-20 10:29:21] PS> curl.exe -s http://localhost:30080/produtos/4
+{"id":4,"nome":"Produto do Guilherme (Kubernetes)","preco":"99.90","criado_em":"2026-11-20T14:28:25.000Z"}
+
+[2026-11-20 10:29:30] PS> kubectl exec -n n3-guilherme deploy/mysql -- mysql -uloja -ptroque-loja-123 loja -e "SELECT id, nome, preco FROM produtos"
+mysql: [Warning] Using a password on the command line interface can be insecure.
+id	nome	preco
+1	Teclado	149.90
+2	Mouse	79.90
+3	Monitor	899.00
+4	Produto do Guilherme (Kubernetes)	99.90
+

@@ -1,0 +1,463 @@
+﻿[2026-11-20 10:27:11] PS> kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+serviceaccount/metrics-server created
+clusterrole.rbac.authorization.k8s.io/system:aggregated-metrics-reader created
+clusterrole.rbac.authorization.k8s.io/system:metrics-server created
+rolebinding.rbac.authorization.k8s.io/metrics-server-auth-reader created
+clusterrolebinding.rbac.authorization.k8s.io/metrics-server:system:auth-delegator created
+clusterrolebinding.rbac.authorization.k8s.io/system:metrics-server created
+service/metrics-server created
+deployment.apps/metrics-server created
+apiservice.apiregistration.k8s.io/v1beta1.metrics.k8s.io created
+
+[2026-11-20 10:27:22] PS> kubectl patch deployment metrics-server -n kube-system --type=json --patch-file k8s-extras/metrics-server-patch.json
+deployment.apps/metrics-server patched
+
+[2026-11-20 10:27:44] PS> kubectl rollout status deployment/metrics-server -n kube-system --timeout=180s
+Waiting for deployment "metrics-server" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "metrics-server" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "metrics-server" rollout to finish: 1 old replicas are pending termination...
+deployment "metrics-server" successfully rolled out
+
+[2026-11-20 10:29:37] PS> kubectl get deployment loja-api -n n3-guilherme
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+loja-api   2/2     2            2           107s
+
+[2026-11-20 10:29:37] PS> kubectl scale deployment loja-api --replicas=4 -n n3-guilherme
+deployment.apps/loja-api scaled
+
+[2026-11-20 10:29:46] PS> kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=180s
+Waiting for deployment "loja-api" rollout to finish: 2 of 4 updated replicas are available...
+Waiting for deployment "loja-api" rollout to finish: 3 of 4 updated replicas are available...
+deployment "loja-api" successfully rolled out
+
+[2026-11-20 10:29:46] PS> kubectl get deployment loja-api -n n3-guilherme
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+loja-api   4/4     4            4           116s
+
+[2026-11-20 10:29:46] PS> kubectl get pods -n n3-guilherme -l app=loja-api -o wide
+NAME                        READY   STATUS    RESTARTS   AGE    IP          NODE             NOMINATED NODE   READINESS GATES
+loja-api-659d7966f6-6npv8   1/1     Running   0          116s   10.1.0.10   docker-desktop   <none>           <none>
+loja-api-659d7966f6-bpsjh   1/1     Running   0          9s     10.1.0.13   docker-desktop   <none>           <none>
+loja-api-659d7966f6-k8wqj   1/1     Running   0          9s     10.1.0.14   docker-desktop   <none>           <none>
+loja-api-659d7966f6-wlrg4   1/1     Running   0          116s   10.1.0.9    docker-desktop   <none>           <none>
+
+[2026-11-20 10:29:46] PS> kubectl scale deployment loja-api --replicas=2 -n n3-guilherme
+deployment.apps/loja-api scaled
+
+[2026-11-20 10:29:58] PS> kubectl get pods -n n3-guilherme -l app=loja-api
+NAME                        READY   STATUS    RESTARTS   AGE
+loja-api-659d7966f6-6npv8   1/1     Running   0          2m8s
+loja-api-659d7966f6-wlrg4   1/1     Running   0          2m8s
+
+[2026-11-20 10:29:58] PS> kubectl get deployment loja-api -n n3-guilherme
+NAME       READY   UP-TO-DATE   AVAILABLE   AGE
+loja-api   2/2     2            2           2m8s
+
+[2026-11-20 10:30:15] PS> docker build -t loja-api:2.0 --build-arg APP_VERSION=2.0 ./app
+#0 building with "desktop-linux" instance using docker driver
+
+#1 [internal] load build definition from Dockerfile
+#1 transferring dockerfile: 2.16kB done
+#1 DONE 0.0s
+
+#2 [auth] docker/dockerfile:pull token for registry-1.docker.io
+#2 DONE 0.0s
+
+#3 resolve image config for docker-image://docker.io/docker/dockerfile:1
+#3 DONE 1.1s
+
+#4 docker-image://docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
+#4 resolve docker.io/docker/dockerfile:1@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183 0.0s done
+#4 CACHED
+
+#5 [internal] load metadata for docker.io/library/node:22-alpine
+#5 ...
+
+#6 [auth] library/node:pull token for registry-1.docker.io
+#6 DONE 0.0s
+
+#5 [internal] load metadata for docker.io/library/node:22-alpine
+#5 DONE 0.8s
+
+#7 [internal] load .dockerignore
+#7 transferring context: 284B done
+#7 DONE 0.0s
+
+#8 [internal] load build context
+#8 transferring context: 252B done
+#8 DONE 0.0s
+
+#9 [deps 1/4] FROM docker.io/library/node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
+#9 resolve docker.io/library/node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a
+#9 resolve docker.io/library/node:22-alpine@sha256:1314fb30ec37592d5845e5a160d522c0e680972aa534549940b8d73bde88481a 0.1s done
+#9 DONE 0.1s
+
+#10 [deps 3/4] COPY package.json package-lock.json ./
+#10 CACHED
+
+#11 [deps 4/4] RUN npm ci --omit=dev && npm cache clean --force
+#11 CACHED
+
+#12 [runtime 3/5] COPY --from=deps --chown=node:node /app/node_modules ./node_modules
+#12 CACHED
+
+#13 [deps 2/4] WORKDIR /app
+#13 CACHED
+
+#14 [runtime 4/5] COPY --chown=node:node package.json ./
+#14 CACHED
+
+#15 [runtime 5/5] COPY --chown=node:node src ./src
+#15 CACHED
+
+#16 exporting to image
+#16 exporting layers done
+#16 exporting manifest sha256:c43465e5365919b32057fd2e7cae9e58cfbf39de298ff693083079acd0bf1adb 0.0s done
+#16 exporting config sha256:ef77c61eb951d5ab0fad82e858a6e87f3261b465e2bc87064286dc76cb0c091c 0.0s done
+#16 exporting attestation manifest sha256:d828cf0486eb5686b1df0e99261662e4260f6586797c25939acea3e4904f78f5 0.0s done
+#16 exporting manifest list sha256:6460a0f8a3bc2d70a6e35627af59b627055739dfbdc7c98b77980d9579dcf844 0.1s done
+#16 naming to docker.io/library/loja-api:2.0
+#16 naming to docker.io/library/loja-api:2.0 done
+#16 unpacking to docker.io/library/loja-api:2.0 0.0s done
+#16 DONE 0.3s
+
+[2026-11-20 10:30:15] PS> docker images loja-api
+IMAGE          ID             DISK USAGE   CONTENT SIZE   EXTRA
+loja-api:1.0   6413ffad5a7a        256MB         63.3MB   U    
+loja-api:2.0   6460a0f8a3bc        256MB         63.3MB
+
+[2026-11-20 10:30:18] PS> kubectl set image deployment/loja-api api=loja-api:2.0 -n n3-guilherme
+deployment.apps/loja-api image updated
+
+[2026-11-20 10:30:19] PS> kubectl annotate deployment/loja-api -n n3-guilherme kubernetes.io/change-cause="atualiza para 2.0 (kubectl set image)" --overwrite
+deployment.apps/loja-api annotated
+
+[2026-11-20 10:30:34] PS> kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=180s
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+deployment "loja-api" successfully rolled out
+
+[2026-11-20 10:30:35] PS> kubectl rollout history deployment/loja-api -n n3-guilherme
+deployment.apps/loja-api 
+REVISION  CHANGE-CAUSE
+1         versao inicial 1.0 (kubectl apply -f k8s/)
+2         atualiza para 2.0 (kubectl set image)
+
+[2026-11-20 10:30:35] PS> kubectl get pods -n n3-guilherme -l app=loja-api
+NAME                        READY   STATUS        RESTARTS   AGE
+loja-api-5fbd9554c-5mg6h    1/1     Running       0          8s
+loja-api-5fbd9554c-6qgg8    1/1     Running       0          17s
+loja-api-659d7966f6-wlrg4   1/1     Terminating   0          2m45s
+
+[2026-11-20 10:30:35] PS> curl.exe -s http://localhost:30080/
+{"app":"loja-api","versao":"2.0","mensagem":"Bem-vindo à Loja do Guilherme (Kubernetes)","pod":"loja-api-5fbd9554c-6qgg8","visitas":3,"rotas":["/health","/ready","/produtos","/produtos/:id","/carga"]}
+
+[2026-11-20 10:31:02] Teste de disponibilidade durante o rollout (Invoke-RestMethod /health a cada 200 ms por 45 s):
+Respostas por versao: 1.0=112, 2.0=106  (ERRO = requisicao que falhou)
+
+[2026-11-20 10:31:13] PS> kubectl set image deployment/loja-api api=loja-api:9.9-nao-existe -n n3-guilherme
+deployment.apps/loja-api image updated
+
+[2026-11-20 10:31:13] PS> kubectl annotate deployment/loja-api -n n3-guilherme kubernetes.io/change-cause="falha proposital: imagem 9.9-nao-existe" --overwrite
+deployment.apps/loja-api annotated
+
+[2026-11-20 10:31:53] PS> kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=40s
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+error: timed out waiting for the condition
+
+[2026-11-20 10:31:53] PS> kubectl get pods -n n3-guilherme -l app=loja-api
+NAME                        READY   STATUS             RESTARTS   AGE
+loja-api-5fbd9554c-5mg6h    1/1     Running            0          86s
+loja-api-5fbd9554c-6qgg8    1/1     Running            0          95s
+loja-api-7fbbb68db7-7cvlh   0/1     ImagePullBackOff   0          40s
+
+[2026-11-20 10:31:53] PS> kubectl describe pod loja-api-7fbbb68db7-7cvlh -n n3-guilherme
+Name:             loja-api-7fbbb68db7-7cvlh
+Namespace:        n3-guilherme
+Priority:         0
+Service Account:  default
+Node:             docker-desktop/192.168.65.3
+Start Time:       Fri, 20 Nov 2026 10:31:13 -0400
+Labels:           app=loja-api
+                  pod-template-hash=7fbbb68db7
+                  track=stable
+Annotations:      <none>
+Status:           Pending
+IP:               10.1.0.17
+IPs:
+  IP:           10.1.0.17
+Controlled By:  ReplicaSet/loja-api-7fbbb68db7
+Init Containers:
+  espera-mysql:
+    Container ID:  docker://7ebf8bd5581ec41d27a6677171c93d6488eee95415b04b6759d7139ee4e03a4e
+    Image:         busybox:1.36
+    Image ID:      docker-pullable://busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      until nc -z -w 2 mysql 3306; do echo 'aguardando mysql...'; sleep 2; done; echo 'mysql respondeu'
+    State:          Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Fri, 20 Nov 2026 10:31:14 -0400
+      Finished:     Fri, 20 Nov 2026 10:31:14 -0400
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     50m
+      memory:  32Mi
+    Requests:
+      cpu:        10m
+      memory:     16Mi
+    Environment:  <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-kgffg (ro)
+Containers:
+  api:
+    Container ID:   
+    Image:          loja-api:9.9-nao-existe
+    Image ID:       
+    Port:           3000/TCP (http)
+    Host Port:      0/TCP (http)
+    State:          Waiting
+      Reason:       ImagePullBackOff
+    Ready:          False
+    Restart Count:  0
+    Limits:
+      cpu:     500m
+      memory:  192Mi
+    Requests:
+      cpu:      100m
+      memory:   96Mi
+    Liveness:   http-get http://:http/health delay=15s timeout=1s period=10s #success=1 #failure=3
+    Readiness:  http-get http://:http/ready delay=5s timeout=1s period=5s #success=1 #failure=3
+    Environment Variables from:
+      loja-api-config  ConfigMap  Optional: false
+    Environment:
+      DB_PASSWORD:  <set to the key 'MYSQL_PASSWORD' in secret 'loja-db-secret'>  Optional: false
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-kgffg (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       False 
+  ContainersReady             False 
+  PodScheduled                True 
+Volumes:
+  kube-api-access-kgffg:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason     Age                From               Message
+  ----     ------     ----               ----               -------
+  Normal   Scheduled  40s                default-scheduler  Successfully assigned n3-guilherme/loja-api-7fbbb68db7-7cvlh to docker-desktop
+  Normal   Pulled     40s                kubelet            spec.initContainers{espera-mysql}: Container image "busybox:1.36" already present on machine and can be accessed by the pod
+  Normal   Created    39s                kubelet            spec.initContainers{espera-mysql}: Container created
+  Normal   Started    39s                kubelet            spec.initContainers{espera-mysql}: Container started
+  Normal   BackOff    13s (x2 over 36s)  kubelet            spec.containers{api}: Back-off pulling image "loja-api:9.9-nao-existe"
+  Warning  Failed     13s (x2 over 36s)  kubelet            spec.containers{api}: Error: ImagePullBackOff
+  Normal   Pulling    1s (x3 over 38s)   kubelet            spec.containers{api}: Pulling image "loja-api:9.9-nao-existe"
+  Warning  Failed     0s (x3 over 37s)   kubelet            spec.containers{api}: Failed to pull image "loja-api:9.9-nao-existe": Error response from daemon: pull access denied for loja-api, repository does not exist or may require 'docker login'
+  Warning  Failed     0s (x3 over 37s)   kubelet            spec.containers{api}: Error: ErrImagePull
+
+[2026-11-20 10:31:54] PS> kubectl get events -n n3-guilherme --field-selector type=Warning --sort-by=.lastTimestamp
+LAST SEEN   TYPE      REASON             OBJECT                          MESSAGE
+4m4s        Warning   FailedScheduling   pod/mysql-6cc88c9f9c-v8m9z      0/1 nodes are available: pod has unbound immediate PersistentVolumeClaims. not found
+3m5s        Warning   Unhealthy          pod/loja-api-659d7966f6-6npv8   Readiness probe failed: HTTP probe failed with statuscode: 503
+3m5s        Warning   Unhealthy          pod/loja-api-659d7966f6-wlrg4   Readiness probe failed: HTTP probe failed with statuscode: 503
+14s         Warning   Failed             pod/loja-api-7fbbb68db7-7cvlh   Error: ImagePullBackOff
+1s          Warning   Failed             pod/loja-api-7fbbb68db7-7cvlh   Failed to pull image "loja-api:9.9-nao-existe": Error response from daemon: pull access denied for loja-api, repository does not exist or may require 'docker login'
+1s          Warning   Failed             pod/loja-api-7fbbb68db7-7cvlh   Error: ErrImagePull
+
+[2026-11-20 10:31:54] PS> curl.exe -s http://localhost:30080/health
+{"status":"ok","versao":"2.0","uptime_s":85}
+
+[2026-11-20 10:31:54] PS> kubectl rollout history deployment/loja-api -n n3-guilherme
+deployment.apps/loja-api 
+REVISION  CHANGE-CAUSE
+1         versao inicial 1.0 (kubectl apply -f k8s/)
+2         atualiza para 2.0 (kubectl set image)
+3         falha proposital: imagem 9.9-nao-existe
+
+[2026-11-20 10:31:54] PS> kubectl rollout undo deployment/loja-api -n n3-guilherme
+Warning: resource deployments/loja-api was previously managed with 'kubectl apply'. Rolling back will not update the kubectl.kubernetes.io/last-applied-configuration annotation, which may cause unexpected behavior on future 'kubectl apply' operations. Consider using 'kubectl apply' with your previous configuration file instead.
+deployment.apps/loja-api rolled back
+
+[2026-11-20 10:31:54] PS> kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=120s
+deployment "loja-api" successfully rolled out
+
+[2026-11-20 10:31:54] PS> kubectl get pods -n n3-guilherme -l app=loja-api
+NAME                        READY   STATUS        RESTARTS   AGE
+loja-api-5fbd9554c-5mg6h    1/1     Running       0          87s
+loja-api-5fbd9554c-6qgg8    1/1     Running       0          96s
+loja-api-7fbbb68db7-7cvlh   0/1     Terminating   0          41s
+
+[2026-11-20 10:31:54] PS> kubectl rollout history deployment/loja-api -n n3-guilherme
+deployment.apps/loja-api 
+REVISION  CHANGE-CAUSE
+1         versao inicial 1.0 (kubectl apply -f k8s/)
+3         falha proposital: imagem 9.9-nao-existe
+4         atualiza para 2.0 (kubectl set image)
+
+[2026-11-20 10:31:54] PS> curl.exe -s http://localhost:30080/health
+{"status":"ok","versao":"2.0","uptime_s":86}
+
+[2026-11-20 10:32:04] PS> kubectl set resources deployment loja-api -c api --requests=cpu=100m,memory=128Mi --limits=cpu=400m,memory=256Mi -n n3-guilherme
+deployment.apps/loja-api resource requirements updated
+
+[2026-11-20 10:32:04] PS> kubectl annotate deployment/loja-api -n n3-guilherme kubernetes.io/change-cause="set resources: requests 100m/128Mi, limits 400m/256Mi" --overwrite
+deployment.apps/loja-api annotated
+
+[2026-11-20 10:32:19] PS> kubectl rollout status deployment/loja-api -n n3-guilherme --timeout=120s
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 out of 2 new replicas have been updated...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+Waiting for deployment "loja-api" rollout to finish: 1 old replicas are pending termination...
+deployment "loja-api" successfully rolled out
+
+[2026-11-20 10:32:19] PS> kubectl describe pod loja-api-58446f7f66-td6sx -n n3-guilherme
+Name:             loja-api-58446f7f66-td6sx
+Namespace:        n3-guilherme
+Priority:         0
+Service Account:  default
+Node:             docker-desktop/192.168.65.3
+Start Time:       Fri, 20 Nov 2026 10:32:11 -0400
+Labels:           app=loja-api
+                  pod-template-hash=58446f7f66
+                  track=stable
+Annotations:      <none>
+Status:           Running
+IP:               10.1.0.19
+IPs:
+  IP:           10.1.0.19
+Controlled By:  ReplicaSet/loja-api-58446f7f66
+Init Containers:
+  espera-mysql:
+    Container ID:  docker://18481346d8b70b2a51dafcf08f436579d181e5dd78ac1fd5a1bbb89285f3afa5
+    Image:         busybox:1.36
+    Image ID:      docker-pullable://busybox@sha256:73aaf090f3d85aa34ee199857f03fa3a95c8ede2ffd4cc2cdb5b94e566b11662
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      sh
+      -c
+      until nc -z -w 2 mysql 3306; do echo 'aguardando mysql...'; sleep 2; done; echo 'mysql respondeu'
+    State:          Terminated
+      Reason:       Completed
+      Exit Code:    0
+      Started:      Fri, 20 Nov 2026 10:32:12 -0400
+      Finished:     Fri, 20 Nov 2026 10:32:12 -0400
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     50m
+      memory:  32Mi
+    Requests:
+      cpu:        10m
+      memory:     16Mi
+    Environment:  <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-7ptnz (ro)
+Containers:
+  api:
+    Container ID:   docker://55f47836e2a66a486590ca18b099dda40934e976f7ba2f91d7d353d81828151b
+    Image:          loja-api:2.0
+    Image ID:       docker-pullable://loja-api@sha256:6460a0f8a3bc2d70a6e35627af59b627055739dfbdc7c98b77980d9579dcf844
+    Port:           3000/TCP (http)
+    Host Port:      0/TCP (http)
+    State:          Running
+      Started:      Fri, 20 Nov 2026 10:32:13 -0400
+    Ready:          True
+    Restart Count:  0
+    Limits:
+      cpu:     400m
+      memory:  256Mi
+    Requests:
+      cpu:      100m
+      memory:   128Mi
+    Liveness:   http-get http://:http/health delay=15s timeout=1s period=10s #success=1 #failure=3
+    Readiness:  http-get http://:http/ready delay=5s timeout=1s period=5s #success=1 #failure=3
+    Environment Variables from:
+      loja-api-config  ConfigMap  Optional: false
+    Environment:
+      DB_PASSWORD:  <set to the key 'MYSQL_PASSWORD' in secret 'loja-db-secret'>  Optional: false
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from kube-api-access-7ptnz (ro)
+Conditions:
+  Type                        Status
+  PodReadyToStartContainers   True 
+  Initialized                 True 
+  Ready                       True 
+  ContainersReady             True 
+  PodScheduled                True 
+Volumes:
+  kube-api-access-7ptnz:
+    Type:                    Projected (a volume that contains injected data from multiple sources)
+    TokenExpirationSeconds:  3607
+    ConfigMapName:           kube-root-ca.crt
+    Optional:                false
+    DownwardAPI:             true
+QoS Class:                   Burstable
+Node-Selectors:              <none>
+Tolerations:                 node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                             node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type    Reason     Age   From               Message
+  ----    ------     ----  ----               -------
+  Normal  Scheduled  8s    default-scheduler  Successfully assigned n3-guilherme/loja-api-58446f7f66-td6sx to docker-desktop
+  Normal  Pulled     7s    kubelet            spec.initContainers{espera-mysql}: Container image "busybox:1.36" already present on machine and can be accessed by the pod
+  Normal  Created    7s    kubelet            spec.initContainers{espera-mysql}: Container created
+  Normal  Started    7s    kubelet            spec.initContainers{espera-mysql}: Container started
+  Normal  Pulled     7s    kubelet            spec.containers{api}: Container image "loja-api:2.0" already present on machine and can be accessed by the pod
+  Normal  Created    6s    kubelet            spec.containers{api}: Container created
+  Normal  Started    6s    kubelet            spec.containers{api}: Container started
+
+[2026-11-20 10:32:19] PS> kubectl get pods -n n3-guilherme -l app=loja-api -o custom-columns=POD:.metadata.name,REQ_CPU:.spec.containers[0].resources.requests.cpu,REQ_MEM:.spec.containers[0].resources.requests.memory,LIM_CPU:.spec.containers[0].resources.limits.cpu,LIM_MEM:.spec.containers[0].resources.limits.memory,QOS:.status.qosClass
+POD                         REQ_CPU   REQ_MEM   LIM_CPU   LIM_MEM   QOS
+loja-api-58446f7f66-td6sx   100m      128Mi     400m      256Mi     Burstable
+loja-api-58446f7f66-tjpq7   100m      128Mi     400m      256Mi     Burstable
+loja-api-5fbd9554c-6qgg8    100m      96Mi      500m      192Mi     Burstable
+
+[2026-11-20 10:32:32] PS> kubectl top nodes
+NAME             CPU(cores)   CPU(%)   MEMORY(bytes)   MEMORY(%)   
+docker-desktop   995m         8%       2394Mi          30%
+
+[2026-11-20 10:32:32] PS> kubectl top pods -n n3-guilherme
+NAME                        CPU(cores)   MEMORY(bytes)   
+loja-api-58446f7f66-td6sx   64m          22Mi            
+loja-api-58446f7f66-tjpq7   9m           22Mi            
+mysql-6cc88c9f9c-9pgj9      10m          431Mi           
+redis-5d78967f89-hnzjf      7m           3Mi
+
+[2026-11-20 10:32:32] PS> kubectl autoscale deployment loja-api --min=2 --max=6 --cpu-percent=50 -n n3-guilherme
+Flag --cpu-percent has been deprecated, Use --cpu with percentage or resource quantity format (e.g., '70%' for utilization or '500m' for milliCPU).
+horizontalpodautoscaler.autoscaling/loja-api autoscaled
+
+[2026-11-20 10:32:32] PS> kubectl patch hpa loja-api -n n3-guilherme --type=merge --patch-file k8s-extras/hpa-behavior-patch.json
+horizontalpodautoscaler.autoscaling/loja-api patched
+
+[2026-11-20 10:32:53] PS> kubectl delete hpa loja-api -n n3-guilherme
+horizontalpodautoscaler.autoscaling "loja-api" deleted from n3-guilherme namespace
+
+[2026-11-20 10:32:53] PS> kubectl autoscale deployment loja-api --min=2 --max=6 --cpu=50% -n n3-guilherme
+horizontalpodautoscaler.autoscaling/loja-api autoscaled
+
+[2026-11-20 10:32:53] PS> kubectl patch hpa loja-api -n n3-guilherme --type=merge --patch-file k8s-extras/hpa-behavior-patch.json
+horizontalpodautoscaler.autoscaling/loja-api patched
+
