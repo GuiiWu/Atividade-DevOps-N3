@@ -1,4 +1,6 @@
-# API da Loja: Deployment (2 réplicas) + Service NodePort.
+# API da Loja: Deployment + Service NodePort.
+# Réplicas e recursos regulados pelo Desafio MCD (ver carga/README-MCD.md):
+# 1 réplica de 200m/64Mi aguenta 200 req/s; acima disso o HPA (40-hpa.yaml) escala.
 #
 # Labels e selectors:
 #   - todos os pods da API têm  app: loja-api
@@ -17,7 +19,8 @@ metadata:
     # Texto que aparece na coluna CHANGE-CAUSE do "kubectl rollout history".
     kubernetes.io/change-cause: "versao inicial 1.0 (kubectl apply -f k8s/)"
 spec:
-  replicas: 2
+  # MCD: 1 réplica basta para 200 req/s. O HPA cuida de subir quando precisar.
+  replicas: 1
   revisionHistoryLimit: 10
   # Atualização sem derrubar: sobe 1 pod novo a mais (maxSurge) e nunca
   # deixa ficar com menos pods prontos do que o desejado (maxUnavailable: 0).
@@ -68,13 +71,16 @@ spec:
           # requests = o que o scheduler RESERVA no nó (e base do % do HPA).
           # limits   = teto: acima da CPU o container é estrangulado
           #            (throttling); acima da memória é morto (OOMKilled).
+          # Valores medidos no Desafio MCD (carga/resultados.csv):
+          #   requests = menor configuração que aguentou 200 req/s (p95 < 500 ms, 0% erro);
+          #   limits   = folga para picos (300m aguentou 400 req/s; o pod usa ~41Mi).
           resources:
             requests:
-              cpu: 100m
-              memory: 96Mi
+              cpu: 200m
+              memory: 64Mi
             limits:
-              cpu: 500m
-              memory: 192Mi
+              cpu: 300m
+              memory: 128Mi
           # Readiness: só recebe tráfego quando MySQL e Redis respondem.
           readinessProbe:
             httpGet:
@@ -84,12 +90,16 @@ spec:
             periodSeconds: 5
             failureThreshold: 3
           # Liveness: se o processo travar, o kubelet reinicia o container.
+          # timeoutSeconds 3 (padrão é 1): com a CPU no limite (throttling) o
+          # /health pode demorar mais de 1 s, e o kubelet reiniciava um pod que
+          # só estava ocupado. Isso apareceu no teste de carga com 100m.
           livenessProbe:
             httpGet:
               path: /health
               port: http
             initialDelaySeconds: 15
             periodSeconds: 10
+            timeoutSeconds: 3
             failureThreshold: 3
           # Dá tempo do Service tirar o pod da lista antes de ele parar,
           # para nenhuma requisição cair durante o rolling update.

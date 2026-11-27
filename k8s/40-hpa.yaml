@@ -1,0 +1,35 @@
+# HPA da API: escala a loja-api pelo uso de CPU.
+# Na N3 ele foi criado por comando (kubectl autoscale, ver comandos.md).
+# Aqui ele vira YAML para que um único "kubectl apply -f k8s/" suba tudo,
+# inclusive numa máquina limpa (precisa do metrics-server instalado).
+#
+# Regulagem do Desafio MCD:
+#   minReplicas 1  -> a menor configuração que aguenta 200 req/s é 1 pod de 200m;
+#   maxReplicas 4  -> cada pod de 300m de limite aguentou ~400 req/s sozinho;
+#   alvo 70%       -> % do REQUEST (200m): escala quando passa de ~140m por pod,
+#                     antes de chegar no limite de 300m e começar o throttling.
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: loja-api
+  namespace: n3-guilherme
+  labels:
+    app: loja-api
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: loja-api
+  minReplicas: 1
+  maxReplicas: 4
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+  behavior:
+    # Descida em 60 s (padrão 300 s), para a demonstração caber na aula.
+    scaleDown:
+      stabilizationWindowSeconds: 60
