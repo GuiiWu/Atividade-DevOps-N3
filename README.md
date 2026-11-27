@@ -12,6 +12,34 @@ Uma API "Loja" em **Node.js** (Express) com **MySQL** (produtos) e **Redis** (ca
 
 Tudo foi executado de verdade no Docker Desktop 4.99 com Kubernetes v1.36.1 (kubeadm). As saídas estão em [`evidencias/`](evidencias/) e os comandos, na ordem em que rodei, em [`comandos.md`](comandos.md).
 
+**Desafio MCD:** teste de carga com k6 e regulagem da menor configuração que aguenta as requisições em [`carga/README-MCD.md`](carga/README-MCD.md).
+
+## Início rápido (máquina limpa, ex.: laboratório da FASIPE)
+
+Precisa só do Git e do Docker Desktop com o Kubernetes ligado (Settings → Kubernetes → Enable, modo kubeadm).
+
+```powershell
+git clone https://github.com/GuiiWu/Atividade-DevOps-N3.git
+cd Atividade-DevOps-N3
+
+# 1. metrics-server (HPA e kubectl top)
+kubectl apply -f https://github.com/kubernetes-sigs/metrics-server/releases/latest/download/components.yaml
+kubectl patch deployment metrics-server -n kube-system --type=json --patch-file k8s-extras/metrics-server-patch.json
+
+# 2. imagem da API (o cluster do Docker Desktop usa as imagens locais)
+docker build -t loja-api:1.0 --build-arg APP_VERSION=1.0 ./app
+
+# 3. sobe tudo: namespace, configmap, secret, mysql, redis, api e HPA
+kubectl apply -f k8s/
+kubectl get pods,hpa -n n3-guilherme -w      # Ctrl+C quando tudo estiver Running/1/1
+
+# 4. confere e roda o teste de carga
+curl.exe http://localhost:30080/produtos
+Get-Content carga/teste-carga.js -Raw | docker run --rm -i -e TAXA=200 grafana/k6:1.3.0 run -
+```
+
+O MySQL leva cerca de 1 minuto na primeira subida. Até lá a API fica `0/1` (esperando no initContainer), e isso é normal.
+
 ## Estrutura
 
 ```
@@ -23,6 +51,7 @@ Tudo foi executado de verdade no Docker Desktop 4.99 com Kubernetes v1.36.1 (kub
 ├── .env.example            variáveis do Compose (senhas só de exemplo)
 ├── k8s/                    manifestos da Parte 3 (kubectl apply -f k8s/)
 ├── k8s-extras/             gerador de carga, canary, Ingress e patches (Parte 4 e bônus)
+├── carga/                  Desafio MCD: script k6, script de varredura e resultados
 ├── comandos.md             comandos da Parte 4, na ordem em que executei
 ├── evidencias/             saídas reais de cada comando
 └── docs/                   relatório (PDF e HTML) e explicação do que foi feito
@@ -104,9 +133,10 @@ A API fica em **http://localhost:30080** (Service NodePort). O namespace `n3-gui
 | `k8s/02-secret.yaml` | Secret `loja-db-secret` (senhas de exemplo em base64) |
 | `k8s/10-mysql.yaml` | PVC `mysql-pvc` (1Gi) + Deployment `mysql` (Recreate) + Service `mysql` |
 | `k8s/20-redis.yaml` | Deployment `redis` + Service `redis` |
-| `k8s/30-api.yaml` | Deployment `loja-api` (2 réplicas, initContainer, probes, requests/limits, RollingUpdate) + Service NodePort `loja-api` |
+| `k8s/30-api.yaml` | Deployment `loja-api` (1 réplica, initContainer, probes, requests/limits, RollingUpdate) + Service NodePort `loja-api` |
+| `k8s/40-hpa.yaml` | HPA `loja-api` (1 a 4 réplicas, 70% de CPU) |
 
-O YAML guarda o **estado inicial** (imagem 1.0, requests 100m/96Mi). As mudanças da Parte 4 (imagem 2.0, `set resources`, HPA) foram feitas por comando, como o enunciado pede, e estão em `comandos.md`.
+Na N3 o YAML guardava o estado inicial (2 réplicas, requests 100m/96Mi), e o HPA foi criado por comando (`comandos.md`). Para o **Desafio MCD**, réplicas, requests/limits e HPA foram regulados pelo teste de carga, e o HPA virou YAML. Os detalhes estão em [`carga/README-MCD.md`](carga/README-MCD.md).
 
 ## 4. Operação (Parte 4) e bônus
 
